@@ -873,11 +873,11 @@
             Eliminar seleccionados
           </button>
           <button
-            class="btn"
-            onclick="clearHistory()"
+            class="btn danger"
+            onclick="confirmClearHistory()"
             style="font-size: 0.62rem; padding: 4px 10px"
           >
-            🗑 Limpiar
+            🗑 Borrar todo
           </button>
         </div>
       </div>
@@ -1378,6 +1378,38 @@
           toast("No hay entrada", "error");
           return;
         }
+
+        // Si el blob no existe (restaurado del historial), usar previewUrl como fallback
+        if (!entry.blob) {
+          if (entry.previewUrl) {
+            // Convertir data URL a blob para compartir
+            fetch(entry.previewUrl)
+              .then((res) => res.blob())
+              .then((blob) => {
+                const file = new File([blob], "frame_" + entry.frame + ".png", {
+                  type: "image/png",
+                });
+                if (navigator.share) {
+                  navigator
+                    .share({
+                      files: [file],
+                      title: "Frame " + entry.frame,
+                    })
+                    .catch(() => {});
+                  toast("🔍 Compartiendo frame " + entry.frame, "success");
+                } else {
+                  toast("Share no disponible en este navegador", "error");
+                }
+              })
+              .catch((e) => {
+                toast("Error al preparar imagen: " + e.message, "error");
+              });
+            return;
+          }
+          toast("No hay datos para este frame", "error");
+          return;
+        }
+
         const file = new File([entry.blob], "frame_" + entry.frame + ".png", {
           type: "image/png",
         });
@@ -1411,6 +1443,23 @@
         frameHistory.splice(i, 1);
         renderHistory();
         saveHistoryToStorage();
+      }
+
+      function confirmClearHistory() {
+        if (frameHistory.length === 0) {
+          toast("Historial vacío", "");
+          return;
+        }
+        if (
+          confirm(
+            "¿Estás seguro de que quieres borrar todo el historial? (" +
+              frameHistory.length +
+              " frames)\n\nEsta acción no se puede deshacer.",
+          )
+        ) {
+          clearHistory();
+          toast("✓ Historial borrado completamente", "success");
+        }
       }
 
       function clearHistory() {
