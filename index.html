@@ -402,7 +402,7 @@
     flex-wrap: wrap;
     padding-top: 2px;
   }
-  .kbd { 
+  .kbd {
     display: inline-block;
     background: var(--surface2);
     border: 1px solid var(--border);
@@ -545,10 +545,10 @@
           📷 Capturar Frame
         </button>
         <button class="btn lens" id="lensBtn" onclick="openLens()" disabled style="justify-content:center;">
-          🔍 Descargar + abrir Google Images
+          🔍 Compartir con Lens
         </button>
         <div class="lens-note">
-          <strong>Long press</strong> sobre la imagen → "Buscar con Google Lens" · o descarga y súbela manualmente. <strong>[C]</strong> captura
+          <strong>Long press</strong> sobre la imagen → "Buscar con Google Lens" · o usa la hoja de compartir para enviarla sin descargar. <strong>[C]</strong> captura
         </div>
       </div>
     </div>
@@ -556,7 +556,7 @@
     <!-- LENS LINK BANNER -->
     <a id="lensLink" href="https://lens.google.com/" target="_blank" rel="noopener" style="display:none;">
       <span>🔍</span>
-      <span>Abrir Google Lens &rarr; sube el PNG que se descargó</span>
+      <span>Abrir Google Lens &rarr; subir manualmente si el compartir no aparece</span>
     </a>
   </div>
 
@@ -880,28 +880,27 @@
   }
 
   // ─── GOOGLE LENS ────────────────────────────────────────────────
-  function openLens() {
+  async function openLens() {
     if (!capturedBlob) { toast('Captura un frame primero.', 'error'); return; }
 
-    const ts = Math.round(video.currentTime * fps);
-    const filename = `frame_${ts}.png`;
+    const file = new File([capturedBlob], 'frame.png', { type: 'image/png' });
 
-    // Descargar imagen
-    const dlUrl = URL.createObjectURL(capturedBlob);
-    const a = document.createElement('a');
-    a.href = dlUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(dlUrl), 3000);
+    if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: 'FrameLens',
+          text: 'Compartir captura para Google Lens',
+        });
+        toast('🔍 Abre Google Lens desde la hoja de compartir si aparece como destino', 'success');
+        return;
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+      }
+    }
 
-    // Abrir Google Images (tiene el botón de cámara más confiable que Lens directo)
-    setTimeout(() => {
-      window.open('https://images.google.com/?hl=es', '_blank');
-    }, 400);
-
-    toast('📥 ' + filename + ' descargado → clic en 🔍 cámara en Google Images y sube la foto', 'success');
+    window.open('https://lens.google.com/', '_blank', 'noopener');
+    toast('📎 Tu navegador no soporta compartir archivos; abre Lens manualmente y sube la captura', 'error');
   }
 
   // ─── RESET ──────────────────────────────────────────────────────
