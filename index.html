@@ -1,975 +1,1408 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FrameLens</title>
-<meta name="description" content="Reproductor de video frame a frame con búsqueda por Google Lens">
-<meta name="theme-color" content="#0a0a0f">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="FrameLens">
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-192.png">
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap');
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FrameLens</title>
+    <meta
+      name="description"
+      content="Reproductor de video frame a frame con búsqueda por Google Lens"
+    />
+    <meta name="theme-color" content="#0a0a0f" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="FrameLens" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap");
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
 
-  :root {
-    --bg: #0a0a0f;
-    --surface: #12121a;
-    --surface2: #1c1c28;
-    --border: #2a2a3d;
-    --accent: #7c6aff;
-    --accent2: #ff6a8a;
-    --text: #e8e8f0;
-    --muted: #5a5a78;
-    --green: #4affb4;
-  }
+      :root {
+        --bg: #0a0a0f;
+        --surface: #12121a;
+        --surface2: #1c1c28;
+        --border: #2a2a3d;
+        --accent: #7c6aff;
+        --accent2: #ff6a8a;
+        --text: #e8e8f0;
+        --muted: #5a5a78;
+        --green: #4affb4;
+      }
 
-  html, body {
-    height: 100%;
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'DM Mono', monospace;
-    overflow-y: auto;
-    overflow-x: hidden;
-  }
+      html,
+      body {
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "DM Mono", monospace;
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
 
-  body {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
-    min-height: 100vh;
-    padding: 12px;
-    gap: 10px;
-  }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        min-height: 100vh;
+        padding: 12px;
+        gap: 10px;
+      }
 
-  /* HEADER */
-  .header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    width: 100%;
-    max-width: 900px;
-  }
+      /* HEADER */
+      .header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        max-width: 900px;
+      }
 
-  .logo {
-    font-family: 'Syne', sans-serif;
-    font-size: 1.4rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    letter-spacing: -0.5px;
-  }
+      .logo {
+        font-family: "Syne", sans-serif;
+        font-size: 1.4rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: -0.5px;
+      }
 
-  .logo span { opacity: 0.5; -webkit-text-fill-color: var(--muted); font-weight: 700; }
+      .logo span {
+        opacity: 0.5;
+        -webkit-text-fill-color: var(--muted);
+        font-weight: 700;
+      }
 
-  .badge {
-    font-size: 0.62rem;
-    padding: 3px 8px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--muted);
-    letter-spacing: 1px;
-    text-transform: uppercase;
-  }
+      .badge {
+        font-size: 0.62rem;
+        padding: 3px 8px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--muted);
+        letter-spacing: 1px;
+        text-transform: uppercase;
+      }
 
-  /* DROP ZONE */
-  #dropzone {
-    width: 100%;
-    max-width: 900px;
-    height: 240px;
-    border: 2px dashed var(--border);
-    border-radius: 16px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
-    background: var(--surface);
-    position: relative;
-    overflow: hidden;
-  }
+      /* DROP ZONE */
+      #dropzone {
+        width: 100%;
+        max-width: 900px;
+        height: 240px;
+        border: 2px dashed var(--border);
+        border-radius: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        cursor: pointer;
+        transition:
+          border-color 0.2s,
+          background 0.2s;
+        background: var(--surface);
+        position: relative;
+        overflow: hidden;
+      }
 
-  #dropzone::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(ellipse at 50% 100%, rgba(124,106,255,0.08) 0%, transparent 70%);
-    pointer-events: none;
-  }
+      #dropzone::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          ellipse at 50% 100%,
+          rgba(124, 106, 255, 0.08) 0%,
+          transparent 70%
+        );
+        pointer-events: none;
+      }
 
-  #dropzone:hover, #dropzone.drag-over {
-    border-color: var(--accent);
-    background: #14141f;
-  }
+      #dropzone:hover,
+      #dropzone.drag-over {
+        border-color: var(--accent);
+        background: #14141f;
+      }
 
-  .drop-icon {
-    width: 56px;
-    height: 56px;
-    border-radius: 14px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.6rem;
-  }
+      .drop-icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 14px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.6rem;
+      }
 
-  .drop-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: var(--text);
-  }
+      .drop-title {
+        font-family: "Syne", sans-serif;
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: var(--text);
+      }
 
-  .drop-sub {
-    font-size: 0.72rem;
-    color: var(--muted);
-    letter-spacing: 0.5px;
-  }
+      .drop-sub {
+        font-size: 0.72rem;
+        color: var(--muted);
+        letter-spacing: 0.5px;
+      }
 
-  #fileInput { display: none; }
+      #fileInput {
+        display: none;
+      }
 
-  /* PLAYER SECTION */
-  #playerSection {
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    width: 100%;
-    max-width: 900px;
-  }
+      /* PLAYER SECTION */
+      #playerSection {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        max-width: 900px;
+      }
 
-  #playerSection.visible { display: flex; }
+      #playerSection.visible {
+        display: flex;
+      }
 
-  /* VIDEO + CANVAS: stacked vertically */
-  .media-row {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    width: 100%;
-  }
+      /* VIDEO + CANVAS: stacked vertically */
+      .media-row {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: 100%;
+      }
 
-  .video-wrap {
-    width: 100%;
-    background: #000;
-    border-radius: 12px;
-    overflow: hidden;
-    border: 1px solid var(--border);
-  }
+      .video-wrap {
+        width: 100%;
+        background: #000;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+      }
 
-  #video {
-    width: 100%;
-    display: block;
-    max-height: 42vh;
-    object-fit: contain;
-    background: #000;
-  }
+      #video {
+        width: 100%;
+        display: block;
+        max-height: 42vh;
+        object-fit: contain;
+        background: #000;
+      }
 
-  /* Capture panel: horizontal strip below video */
-  .capture-panel {
-    width: 100%;
-    display: flex;
-    flex-direction: row;
-    gap: 10px;
-    align-items: stretch;
-  }
+      /* Capture panel: horizontal strip below video */
+      .capture-panel {
+        width: 100%;
+        display: flex;
+        flex-direction: row;
+        gap: 10px;
+        align-items: stretch;
+      }
 
-  .panel-label {
-    font-size: 0.62rem;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: var(--muted);
-    padding-left: 2px;
-    margin-bottom: 4px;
-  }
+      .panel-label {
+        font-size: 0.62rem;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        color: var(--muted);
+        padding-left: 2px;
+        margin-bottom: 4px;
+      }
 
-  .canvas-wrap {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
-    width: 160px;
-    aspect-ratio: 16/9;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
+      .canvas-wrap {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        width: 160px;
+        aspect-ratio: 16/9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
 
-  .canvas-placeholder {
-    font-size: 0.6rem;
-    color: var(--muted);
-    text-align: center;
-    padding: 8px;
-    line-height: 1.5;
-  }
+      .canvas-placeholder {
+        font-size: 0.6rem;
+        color: var(--muted);
+        text-align: center;
+        padding: 8px;
+        line-height: 1.5;
+      }
 
-  #frameCanvas {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    display: none;
-  }
+      #frameCanvas {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: none;
+      }
 
-  .capture-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    flex: 1;
-    justify-content: center;
-  }
+      .capture-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        flex: 1;
+        justify-content: center;
+      }
 
-  /* CONTROLS */
-  .controls {
-    width: 100%;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
+      /* CONTROLS */
+      .controls {
+        width: 100%;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 10px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
 
-  /* SCRUBBER */
-  .scrubber-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
+      /* SCRUBBER */
+      .scrubber-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
 
-  .time-badge {
-    font-size: 0.7rem;
-    color: var(--accent);
-    min-width: 80px;
-    white-space: nowrap;
-  }
+      .time-badge {
+        font-size: 0.7rem;
+        color: var(--accent);
+        min-width: 80px;
+        white-space: nowrap;
+      }
 
-  .scrubber {
-    flex: 1;
-    -webkit-appearance: none;
-    appearance: none;
-    height: 4px;
-    background: var(--border);
-    border-radius: 2px;
-    outline: none;
-    cursor: pointer;
-    position: relative;
-  }
+      .scrubber {
+        flex: 1;
+        -webkit-appearance: none;
+        appearance: none;
+        height: 4px;
+        background: var(--border);
+        border-radius: 2px;
+        outline: none;
+        cursor: pointer;
+        position: relative;
+      }
 
-  .scrubber::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: var(--accent);
-    cursor: pointer;
-    box-shadow: 0 0 0 3px rgba(124,106,255,0.25);
-    transition: box-shadow 0.15s;
-  }
+      .scrubber::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--accent);
+        cursor: pointer;
+        box-shadow: 0 0 0 3px rgba(124, 106, 255, 0.25);
+        transition: box-shadow 0.15s;
+      }
 
-  .scrubber::-webkit-slider-thumb:hover {
-    box-shadow: 0 0 0 6px rgba(124,106,255,0.3);
-  }
+      .scrubber::-webkit-slider-thumb:hover {
+        box-shadow: 0 0 0 6px rgba(124, 106, 255, 0.3);
+      }
 
-  .duration-badge {
-    font-size: 0.7rem;
-    color: var(--muted);
-    min-width: 60px;
-    text-align: right;
-  }
+      .duration-badge {
+        font-size: 0.7rem;
+        color: var(--muted);
+        min-width: 60px;
+        text-align: right;
+      }
 
-  /* BUTTON ROW */
-  .btn-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
+      /* BUTTON ROW */
+      .btn-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
 
-  .btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 7px 14px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: var(--surface2);
-    color: var(--text);
-    font-family: 'DM Mono', monospace;
-    font-size: 0.72rem;
-    cursor: pointer;
-    transition: all 0.15s;
-    white-space: nowrap;
-  }
+      .btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 14px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--surface2);
+        color: var(--text);
+        font-family: "DM Mono", monospace;
+        font-size: 0.72rem;
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+      }
 
-  .btn:hover { background: var(--border); border-color: var(--muted); }
-  .btn:active { transform: scale(0.97); }
+      .btn:hover {
+        background: var(--border);
+        border-color: var(--muted);
+      }
+      .btn:active {
+        transform: scale(0.97);
+      }
 
-  .btn.primary {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #fff;
-    font-weight: 500;
-  }
-  .btn.primary:hover { background: #6b5ae8; border-color: #6b5ae8; }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+        font-weight: 500;
+      }
+      .btn.primary:hover {
+        background: #6b5ae8;
+        border-color: #6b5ae8;
+      }
 
-  .btn.lens {
-    background: linear-gradient(135deg, #4285f4, #34a853);
-    border: none;
-    color: #fff;
-    font-weight: 500;
-  }
-  .btn.lens:hover { opacity: 0.88; }
-  .btn.lens:disabled {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--muted);
-    cursor: not-allowed;
-    opacity: 1;
-  }
+      .btn.lens {
+        background: linear-gradient(135deg, #4285f4, #34a853);
+        border: none;
+        color: #fff;
+        font-weight: 500;
+      }
+      .btn.lens:hover {
+        opacity: 0.88;
+      }
+      .btn.lens:disabled {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        color: var(--muted);
+        cursor: not-allowed;
+        opacity: 1;
+      }
 
-  .btn.danger {
-    border-color: var(--accent2);
-    color: var(--accent2);
-  }
-  .btn.danger:hover { background: rgba(255,106,138,0.1); }
+      .btn.danger {
+        border-color: var(--accent2);
+        color: var(--accent2);
+      }
+      .btn.danger:hover {
+        background: rgba(255, 106, 138, 0.1);
+      }
 
-  .sep { flex: 1; }
+      .sep {
+        flex: 1;
+      }
 
-  /* FRAME INFO */
-  .frame-info {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    font-size: 0.68rem;
-    color: var(--muted);
-    padding-top: 4px;
-    border-top: 1px solid var(--border);
-  }
+      /* FRAME INFO */
+      .frame-info {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        font-size: 0.68rem;
+        color: var(--muted);
+        padding-top: 4px;
+        border-top: 1px solid var(--border);
+      }
 
-  .info-item { display: flex; gap: 6px; align-items: center; }
-  .info-val { color: var(--green); }
+      .info-item {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .info-val {
+        color: var(--green);
+      }
 
-  /* FPS selector */
-  .fps-select {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text);
-    font-family: 'DM Mono', monospace;
-    font-size: 0.7rem;
-    padding: 4px 8px;
-    cursor: pointer;
-    outline: none;
-  }
+      /* FPS selector */
+      .fps-select {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        font-family: "DM Mono", monospace;
+        font-size: 0.7rem;
+        padding: 4px 8px;
+        cursor: pointer;
+        outline: none;
+      }
 
-  /* TOAST */
-  #toast {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 10px 16px;
-    border-radius: 10px;
-    font-size: 0.75rem;
-    transform: translateY(60px);
-    opacity: 0;
-    transition: all 0.3s;
-    z-index: 999;
-    max-width: 280px;
-  }
-  #toast.show { transform: translateY(0); opacity: 1; }
-  #toast.success { border-color: var(--green); color: var(--green); }
-  #toast.error { border-color: var(--accent2); color: var(--accent2); }
+      /* TOAST */
+      #toast {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 10px 16px;
+        border-radius: 10px;
+        font-size: 0.75rem;
+        transform: translateY(60px);
+        opacity: 0;
+        transition: all 0.3s;
+        z-index: 999;
+        max-width: 280px;
+      }
+      #toast.show {
+        transform: translateY(0);
+        opacity: 1;
+      }
+      #toast.success {
+        border-color: var(--green);
+        color: var(--green);
+      }
+      #toast.error {
+        border-color: var(--accent2);
+        color: var(--accent2);
+      }
 
-  /* KEYBOARD HINT */
-  .kbd-hint {
-    font-size: 0.64rem;
-    color: var(--muted);
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    padding-top: 2px;
-  }
-  .kbd {
-    display: inline-block;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 1px 5px;
-    font-size: 0.62rem;
-    margin-right: 3px;
-  }
+      /* KEYBOARD HINT */
+      .kbd-hint {
+        font-size: 0.64rem;
+        color: var(--muted);
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding-top: 2px;
+      }
+      .kbd {
+        display: inline-block;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-size: 0.62rem;
+        margin-right: 3px;
+      }
 
-  .lens-note {
-    font-size: 0.62rem;
-    color: var(--muted);
-    line-height: 1.5;
-    padding: 8px 10px;
-    background: var(--surface2);
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    flex: 1;
-  }
-  .lens-note strong { color: var(--accent); }
+      .lens-note {
+        font-size: 0.62rem;
+        color: var(--muted);
+        line-height: 1.5;
+        padding: 8px 10px;
+        background: var(--surface2);
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        flex: 1;
+      }
+      .lens-note strong {
+        color: var(--accent);
+      }
 
-  /* LENS LINK BANNER */
-  #lensLink {
-    width: 100%;
-    padding: 11px 16px;
-    background: linear-gradient(135deg, #1a237e55, #1565c055);
-    border: 1px solid #4285f4aa;
-    border-radius: 10px;
-    color: #90caf9;
-    font-family: 'DM Mono', monospace;
-    font-size: 0.75rem;
-    text-decoration: none;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    animation: pulseIn 0.35s ease;
-    transition: background 0.15s;
-  }
-  #lensLink:hover { background: linear-gradient(135deg, #1a237e88, #1565c088); }
-  @keyframes pulseIn {
-    from { opacity: 0; transform: translateY(-4px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  /* HISTORY GRID */
-  #historyGrid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-    gap: 8px;
-  }
+      /* LENS LINK BANNER */
+      #lensLink {
+        width: 100%;
+        padding: 11px 16px;
+        background: linear-gradient(135deg, #1a237e55, #1565c055);
+        border: 1px solid #4285f4aa;
+        border-radius: 10px;
+        color: #90caf9;
+        font-family: "DM Mono", monospace;
+        font-size: 0.75rem;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        animation: pulseIn 0.35s ease;
+        transition: background 0.15s;
+      }
+      #lensLink:hover {
+        background: linear-gradient(135deg, #1a237e88, #1565c088);
+      }
+      @keyframes pulseIn {
+        from {
+          opacity: 0;
+          transform: translateY(-4px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      /* HISTORY GRID */
+      #historyGrid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 8px;
+      }
 
-  .history-item {
-    position: relative;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
-    cursor: pointer;
-    transition: border-color 0.15s, transform 0.15s;
-  }
+      .history-item {
+        position: relative;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          transform 0.15s;
+      }
 
-  .history-item:hover { border-color: var(--accent); transform: scale(1.02); }
-  .history-item.active { border-color: var(--green); }
+      .history-item:hover {
+        border-color: var(--accent);
+        transform: scale(1.02);
+      }
+      .history-item.active {
+        border-color: var(--green);
+      }
 
-  .history-item img {
-    width: 100%;
-    aspect-ratio: 16/9;
-    object-fit: cover;
-    display: block;
-  }
+      .history-item img {
+        width: 100%;
+        aspect-ratio: 16/9;
+        object-fit: cover;
+        display: block;
+      }
 
-  .history-item .h-meta {
-    font-size: 0.58rem;
-    color: var(--muted);
-    padding: 3px 5px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+      .history-item .h-meta {
+        font-size: 0.58rem;
+        color: var(--muted);
+        padding: 3px 5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
 
-  .history-item .h-del {
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    background: rgba(0,0,0,0.7);
-    border: none;
-    color: var(--accent2);
-    border-radius: 4px;
-    width: 18px;
-    height: 18px;
-    font-size: 0.6rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.15s;
-  }
+      .history-item .h-del {
+        position: absolute;
+        top: 3px;
+        right: 3px;
+        background: rgba(0, 0, 0, 0.7);
+        border: none;
+        color: var(--accent2);
+        border-radius: 4px;
+        width: 18px;
+        height: 18px;
+        font-size: 0.6rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
 
-  .history-item:hover .h-del { opacity: 1; }
-</style>
-</head>
-<body>
-
-<div class="header">
-  <div class="logo">Frame<span>Lens</span></div>
-  <div class="badge">v1.0</div>
-</div>
-
-<!-- DROP ZONE -->
-<div id="dropzone" onclick="document.getElementById('fileInput').click()">
-  <div class="drop-icon">🎬</div>
-  <div class="drop-title">Sube o arrastra tu video</div>
-  <div class="drop-sub">MP4 · WebM · MOV · AVI · MKV</div>
-  <input type="file" id="fileInput" accept="video/*">
-</div>
-
-<!-- PLAYER -->
-<div id="playerSection">
-  <div class="media-row">
-    <div class="video-wrap">
-      <video id="video" preload="metadata"></video>
+      .history-item:hover .h-del {
+        opacity: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="logo">Frame<span>Lens</span></div>
+      <div class="badge">v1.0</div>
     </div>
 
-    <div class="capture-panel">
-      <!-- Thumbnail: IMG real para que long-press abra menú nativo de Lens -->
-      <div>
-        <div class="panel-label">Frame capturado</div>
-        <div class="canvas-wrap">
-          <div class="canvas-placeholder" id="canvasPlaceholder">Captura<br>un frame</div>
-          <canvas id="frameCanvas" style="display:none;"></canvas>
-          <img id="frameImg" style="display:none; width:100%; height:100%; object-fit:contain; border-radius:8px;" alt="frame capturado" draggable="true">
+    <!-- DROP ZONE -->
+    <div id="dropzone" onclick="document.getElementById('fileInput').click()">
+      <div class="drop-icon">🎬</div>
+      <div class="drop-title">Sube o arrastra tu video</div>
+      <div class="drop-sub">MP4 · WebM · MOV · AVI · MKV</div>
+      <input type="file" id="fileInput" accept="video/*" />
+    </div>
+
+    <!-- PLAYER -->
+    <div id="playerSection">
+      <div class="media-row">
+        <div class="video-wrap">
+          <video id="video" preload="metadata"></video>
         </div>
-        <div id="longPressHint" style="display:none; font-size:0.58rem; color:var(--muted); text-align:center; margin-top:4px;">
-          mantén presionada ☝️ para Lens
+
+        <!-- MINI CONTROLS (compact, debajo del video) -->
+        <div
+          class="mini-controls"
+          style="
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin: 8px 0 0 0;
+          "
+        >
+          <button class="btn" onclick="stepFrames(-1)" title="-1 frame">
+            ◀
+          </button>
+          <button
+            class="btn primary"
+            id="playBtnMini"
+            onclick="togglePlayMini()"
+          >
+            ▶
+          </button>
+          <button class="btn" onclick="stepFrames(1)" title="+1 frame">
+            ▶
+          </button>
+          <button class="btn" onclick="captureFrame()" title="Capturar">
+            📷
+          </button>
+        </div>
+
+        <div class="capture-panel">
+          <!-- Thumbnail: IMG real para que long-press abra menú nativo de Lens -->
+          <div>
+            <div class="panel-label">Frame capturado</div>
+            <div class="canvas-wrap">
+              <div class="canvas-placeholder" id="canvasPlaceholder">
+                Captura<br />un frame
+              </div>
+              <canvas id="frameCanvas" style="display: none"></canvas>
+              <img
+                id="frameImg"
+                style="
+                  display: none;
+                  width: 100%;
+                  height: 100%;
+                  object-fit: contain;
+                  border-radius: 8px;
+                "
+                alt="frame capturado"
+                draggable="true"
+              />
+            </div>
+            <div
+              id="longPressHint"
+              style="
+                display: none;
+                font-size: 0.58rem;
+                color: var(--muted);
+                text-align: center;
+                margin-top: 4px;
+              "
+            >
+              mantén presionada ☝️ para Lens
+            </div>
+          </div>
+          <!-- Actions -->
+          <div class="capture-actions">
+            <button
+              class="btn primary"
+              onclick="captureFrame()"
+              style="justify-content: center"
+            >
+              📷 Capturar Frame
+            </button>
+            <button
+              class="btn lens"
+              id="lensBtn"
+              onclick="openLens()"
+              disabled
+              style="justify-content: center"
+            >
+              🔍 Abrir Lens
+            </button>
+            <div class="lens-note">
+              <strong>Long press</strong> sobre la imagen → "Buscar con Google
+              Lens" · o ábrela directo desde el navegador.
+              <strong>[C]</strong> captura
+            </div>
+          </div>
+        </div>
+
+        <!-- LENS LINK BANNER -->
+        <a
+          id="lensLink"
+          href="https://lens.google.com/"
+          target="_blank"
+          rel="noopener"
+          style="display: none"
+        >
+          <span>🔍</span>
+          <span
+            >Abrir Google Lens &rarr; si no abre la app, caerá a la versión
+            web</span
+          >
+        </a>
+      </div>
+
+      <div class="controls">
+        <!-- SCRUBBER -->
+        <div class="scrubber-row">
+          <div class="time-badge" id="currentTime">0:00.000</div>
+          <input
+            type="range"
+            class="scrubber"
+            id="scrubber"
+            min="0"
+            max="1000"
+            value="0"
+            step="1"
+          />
+          <div class="duration-badge" id="duration">0:00</div>
+        </div>
+
+        <!-- BUTTONS -->
+        <div class="btn-row">
+          <button class="btn" onclick="stepFrames(-10)" title="-10 frames">
+            ⏮ -10f
+          </button>
+          <button class="btn" onclick="stepFrames(-1)" title="-1 frame">
+            ◀ -1f
+          </button>
+          <button class="btn primary" id="playBtn" onclick="togglePlay()">
+            ▶ Play
+          </button>
+          <button class="btn" onclick="stepFrames(1)" title="+1 frame">
+            +1f ▶
+          </button>
+          <button class="btn" onclick="stepFrames(10)" title="+10 frames">
+            +10f ⏭
+          </button>
+
+          <div class="sep"></div>
+
+          <label
+            style="
+              font-size: 0.7rem;
+              color: var(--muted);
+              display: flex;
+              align-items: center;
+              gap: 6px;
+            "
+          >
+            Vel:
+            <select
+              class="fps-select"
+              id="speedSelect"
+              onchange="updateSpeed()"
+            >
+              <option value="0.1">0.1x</option>
+              <option value="0.25">0.25x</option>
+              <option value="0.5">0.5x</option>
+              <option value="1" selected>1x</option>
+              <option value="1.5">1.5x</option>
+              <option value="2">2x</option>
+            </select>
+          </label>
+
+          <label
+            style="
+              font-size: 0.7rem;
+              color: var(--muted);
+              display: flex;
+              align-items: center;
+              gap: 6px;
+            "
+          >
+            FPS:
+            <select class="fps-select" id="fpsSelect" onchange="updateFPS()">
+              <option value="24">24</option>
+              <option value="25">25</option>
+              <option value="30" selected>30</option>
+              <option value="50">50</option>
+              <option value="60">60</option>
+            </select>
+          </label>
+
+          <button class="btn danger" onclick="resetPlayer()">✕ Cambiar</button>
+        </div>
+
+        <!-- FRAME INFO -->
+        <div class="frame-info">
+          <div class="info-item">
+            Frame: <span class="info-val" id="frameNum">—</span>
+          </div>
+          <div class="info-item">
+            Tiempo: <span class="info-val" id="exactTime">—</span>
+          </div>
+          <div class="info-item">
+            FPS: <span class="info-val" id="fpsInfo">30</span>
+          </div>
+          <div class="sep"></div>
+          <div class="kbd-hint">
+            <span
+              ><span class="kbd">←</span><span class="kbd">→</span> frame</span
+            >
+            <span><span class="kbd">Space</span> play/pause</span>
+            <span><span class="kbd">C</span> capturar</span>
+            <span><span class="kbd">L</span> Lens</span>
+          </div>
         </div>
       </div>
-      <!-- Actions -->
-      <div class="capture-actions">
-        <button class="btn primary" onclick="captureFrame()" style="justify-content:center;">
-          📷 Capturar Frame
-        </button>
-        <button class="btn lens" id="lensBtn" onclick="openLens()" disabled style="justify-content:center;">
-          🔍 Abrir Lens
-        </button>
-        <div class="lens-note">
-          <strong>Long press</strong> sobre la imagen → "Buscar con Google Lens" · o ábrela directo desde el navegador. <strong>[C]</strong> captura
+    </div>
+
+    <!-- HISTORIAL DE FRAMES -->
+    <div
+      id="historySection"
+      style="display: none; width: 100%; max-width: 900px"
+    >
+      <div
+        style="
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          justify-content: space-between;
+          margin-bottom: 6px;
+        "
+      >
+        <div style="display: flex; align-items: center; gap: 8px">
+          <div
+            style="
+              font-size: 0.62rem;
+              text-transform: uppercase;
+              letter-spacing: 1.5px;
+              color: var(--muted);
+            "
+          >
+            Historial
+            <span id="historyCount" style="color: var(--accent)">0</span> frames
+          </div>
+          <input
+            id="historySearch"
+            type="search"
+            placeholder="Buscar frames..."
+            oninput="filterHistory(this.value)"
+            style="
+              padding: 6px;
+              border-radius: 6px;
+              border: 1px solid var(--border);
+              background: var(--surface);
+              color: var(--text);
+              font-size: 0.85rem;
+            "
+          />
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px">
+          <button
+            class="btn"
+            onclick="toggleSelectMode()"
+            id="toggleSelectBtn"
+            style="font-size: 0.62rem; padding: 4px 10px"
+          >
+            Seleccionar
+          </button>
+          <button
+            class="btn"
+            onclick="deleteSelected()"
+            id="deleteSelectedBtn"
+            style="font-size: 0.62rem; padding: 4px 10px; display: none"
+          >
+            Eliminar seleccionados
+          </button>
+          <button
+            class="btn"
+            onclick="clearHistory()"
+            style="font-size: 0.62rem; padding: 4px 10px"
+          >
+            🗑 Limpiar
+          </button>
         </div>
       </div>
+      <div id="historyGrid"></div>
     </div>
 
-    <!-- LENS LINK BANNER -->
-    <a id="lensLink" href="https://lens.google.com/" target="_blank" rel="noopener" style="display:none;">
-      <span>🔍</span>
-      <span>Abrir Google Lens &rarr; si no abre la app, caerá a la versión web</span>
-    </a>
-  </div>
+    <div id="toast"></div>
 
-  <div class="controls">
-    <!-- SCRUBBER -->
-    <div class="scrubber-row">
-      <div class="time-badge" id="currentTime">0:00.000</div>
-      <input type="range" class="scrubber" id="scrubber" min="0" max="1000" value="0" step="1">
-      <div class="duration-badge" id="duration">0:00</div>
-    </div>
+    <script>
+      const video = document.getElementById("video");
+      const scrubber = document.getElementById("scrubber");
+      const fileInput = document.getElementById("fileInput");
+      const dropzone = document.getElementById("dropzone");
+      const playerSection = document.getElementById("playerSection");
+      const frameCanvas = document.getElementById("frameCanvas");
+      const ctx = frameCanvas.getContext("2d");
+      const lensBtn = document.getElementById("lensBtn");
 
-    <!-- BUTTONS -->
-    <div class="btn-row">
-      <button class="btn" onclick="stepFrames(-10)" title="-10 frames">⏮ -10f</button>
-      <button class="btn" onclick="stepFrames(-1)" title="-1 frame">◀ -1f</button>
-      <button class="btn primary" id="playBtn" onclick="togglePlay()">▶ Play</button>
-      <button class="btn" onclick="stepFrames(1)" title="+1 frame">+1f ▶</button>
-      <button class="btn" onclick="stepFrames(10)" title="+10 frames">+10f ⏭</button>
+      // Historial helpers
+      let historyFilter = "";
+      let selectionMode = false;
+      let selectedItems = new Set();
 
-      <div class="sep"></div>
+      let fps = 30;
+      let frameDuration = 1 / fps;
+      let capturedBlob = null;
+      let isScrubbing = false;
+      let frameHistory = [];
+      let currentVideoURL = null; // para revocar el blob cuando cambie el video
+      let seekPending = false; // throttle de seeks para no congelar
 
-      <label style="font-size:0.7rem;color:var(--muted);display:flex;align-items:center;gap:6px;">
-        Vel:
-        <select class="fps-select" id="speedSelect" onchange="updateSpeed()">
-          <option value="0.1">0.1x</option>
-          <option value="0.25">0.25x</option>
-          <option value="0.5">0.5x</option>
-          <option value="1" selected>1x</option>
-          <option value="1.5">1.5x</option>
-          <option value="2">2x</option>
-        </select>
-      </label>
+      // ─── SPEED ──────────────────────────────────────────────────────
+      function updateSpeed() {
+        const speed = parseFloat(document.getElementById("speedSelect").value);
+        video.playbackRate = speed;
+        toast("Velocidad: " + speed + "x", "");
+      }
 
-      <label style="font-size:0.7rem;color:var(--muted);display:flex;align-items:center;gap:6px;">
-        FPS:
-        <select class="fps-select" id="fpsSelect" onchange="updateFPS()">
-          <option value="24">24</option>
-          <option value="25">25</option>
-          <option value="30" selected>30</option>
-          <option value="50">50</option>
-          <option value="60">60</option>
-        </select>
-      </label>
+      // ─── DRAG & DROP ───────────────────────────────────────────────
+      dropzone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropzone.classList.add("drag-over");
+      });
+      dropzone.addEventListener("dragleave", () =>
+        dropzone.classList.remove("drag-over"),
+      );
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("drag-over");
+        const file = e.dataTransfer.files[0];
+        if (file && file.type.startsWith("video/")) loadVideo(file);
+        else toast("Archivo no válido. Sube un video.", "error");
+      });
 
-      <button class="btn danger" onclick="resetPlayer()">✕ Cambiar</button>
-    </div>
+      fileInput.addEventListener("change", () => {
+        if (fileInput.files[0]) loadVideo(fileInput.files[0]);
+      });
 
-    <!-- FRAME INFO -->
-    <div class="frame-info">
-      <div class="info-item">Frame: <span class="info-val" id="frameNum">—</span></div>
-      <div class="info-item">Tiempo: <span class="info-val" id="exactTime">—</span></div>
-      <div class="info-item">FPS: <span class="info-val" id="fpsInfo">30</span></div>
-      <div class="sep"></div>
-      <div class="kbd-hint">
-        <span><span class="kbd">←</span><span class="kbd">→</span> frame</span>
-        <span><span class="kbd">Space</span> play/pause</span>
-        <span><span class="kbd">C</span> capturar</span>
-        <span><span class="kbd">L</span> Lens</span>
-      </div>
-    </div>
-  </div>
-</div>
+      function loadVideo(file) {
+        // Revocar blob anterior para liberar memoria
+        if (currentVideoURL) {
+          URL.revokeObjectURL(currentVideoURL);
+          currentVideoURL = null;
+        }
+        currentVideoURL = URL.createObjectURL(file);
+        video.src = currentVideoURL;
+        video.load();
+        dropzone.style.display = "none";
+        playerSection.classList.add("visible");
+        toast("Video cargado: " + file.name.slice(0, 40), "success");
+      }
 
-  <!-- HISTORIAL DE FRAMES -->
-  <div id="historySection" style="display:none; width:100%; max-width:900px;">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-      <div style="font-size:0.62rem; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted);">
-        Historial <span id="historyCount" style="color:var(--accent);">0</span> frames
-      </div>
-      <button class="btn" onclick="clearHistory()" style="font-size:0.62rem; padding:4px 10px;">🗑 Limpiar</button>
-    </div>
-    <div id="historyGrid"></div>
-  </div>
-</div>
+      // ─── VIDEO EVENTS ───────────────────────────────────────────────
+      video.addEventListener("loadedmetadata", () => {
+        scrubber.max = Math.floor(video.duration * 1000);
+        document.getElementById("duration").textContent = formatTime(
+          video.duration,
+        );
+        updateInfo();
+      });
 
-<div id="toast"></div>
+      video.addEventListener("timeupdate", () => {
+        if (!isScrubbing) {
+          scrubber.value = Math.floor(video.currentTime * 1000);
+          updateInfo();
+        }
+      });
 
-<script>
-  const video = document.getElementById('video');
-  const scrubber = document.getElementById('scrubber');
-  const fileInput = document.getElementById('fileInput');
-  const dropzone = document.getElementById('dropzone');
-  const playerSection = document.getElementById('playerSection');
-  const frameCanvas = document.getElementById('frameCanvas');
-  const ctx = frameCanvas.getContext('2d');
-  const lensBtn = document.getElementById('lensBtn');
+      video.addEventListener("play", () => {
+        setPlayText("⏸ Pause");
+      });
 
-  let fps = 30;
-  let frameDuration = 1 / fps;
-  let capturedBlob = null;
-  let isScrubbing = false;
-  let frameHistory = [];
-  let currentVideoURL = null; // para revocar el blob cuando cambie el video
-  let seekPending = false;    // throttle de seeks para no congelar
+      video.addEventListener("pause", () => {
+        setPlayText("▶ Play");
+      });
 
-  // ─── SPEED ──────────────────────────────────────────────────────
-  function updateSpeed() {
-    const speed = parseFloat(document.getElementById('speedSelect').value);
-    video.playbackRate = speed;
-    toast('Velocidad: ' + speed + 'x', '');
-  }
+      // Recovery: si el video se traba, intentar reanudar automáticamente
+      video.addEventListener("stalled", () => {
+        toast("⚠ Video trabado, intentando reanudar...", "");
+        setTimeout(() => {
+          if (video.paused) return;
+          const t = video.currentTime;
+          video.load();
+          video.currentTime = t;
+          video.play().catch(() => {});
+        }, 1500);
+      });
 
-  // ─── DRAG & DROP ───────────────────────────────────────────────
-  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
-  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
-  dropzone.addEventListener('drop', e => {
-    e.preventDefault();
-    dropzone.classList.remove('drag-over');
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('video/')) loadVideo(file);
-    else toast('Archivo no válido. Sube un video.', 'error');
-  });
+      video.addEventListener("waiting", () => {
+        // Solo mostrar indicador visual, no hacer nada agresivo
+        document.getElementById("playBtn").textContent = "⏳";
+      });
 
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files[0]) loadVideo(fileInput.files[0]);
-  });
+      video.addEventListener("canplay", () => {
+        setPlayText(video.paused ? "▶ Play" : "⏸ Pause");
+      });
 
-  function loadVideo(file) {
-    // Revocar blob anterior para liberar memoria
-    if (currentVideoURL) {
-      URL.revokeObjectURL(currentVideoURL);
-      currentVideoURL = null;
-    }
-    currentVideoURL = URL.createObjectURL(file);
-    video.src = currentVideoURL;
-    video.load();
-    dropzone.style.display = 'none';
-    playerSection.classList.add('visible');
-    toast('Video cargado: ' + file.name.slice(0, 40), 'success');
-  }
+      video.addEventListener("error", () => {
+        toast("❌ Error en el video. Intenta recargarlo.", "error");
+        setPlayText("▶ Play");
+      });
 
-  // ─── VIDEO EVENTS ───────────────────────────────────────────────
-  video.addEventListener('loadedmetadata', () => {
-    scrubber.max = Math.floor(video.duration * 1000);
-    document.getElementById('duration').textContent = formatTime(video.duration);
-    updateInfo();
-  });
+      // ─── SCRUBBER ───────────────────────────────────────────────────
+      scrubber.addEventListener("mousedown", () => {
+        isScrubbing = true;
+      });
+      scrubber.addEventListener("touchstart", { passive: true }, () => {
+        isScrubbing = true;
+      });
 
-  video.addEventListener('timeupdate', () => {
-    if (!isScrubbing) {
-      scrubber.value = Math.floor(video.currentTime * 1000);
-      updateInfo();
-    }
-  });
+      scrubber.addEventListener("input", () => {
+        // Throttle: no mandar seeks simultáneos al video (congela en móvil)
+        if (seekPending) return;
+        seekPending = true;
+        video.currentTime = scrubber.value / 1000;
+        updateInfo();
+        setTimeout(() => {
+          seekPending = false;
+        }, 80);
+      });
 
-  video.addEventListener('play', () => {
-    document.getElementById('playBtn').textContent = '⏸ Pause';
-  });
+      // Liberar isScrubbing en document para capturar mouseup/touchend fuera del slider
+      document.addEventListener("mouseup", () => {
+        isScrubbing = false;
+      });
+      document.addEventListener("touchend", () => {
+        isScrubbing = false;
+      });
+      document.addEventListener("touchcancel", () => {
+        isScrubbing = false;
+      });
 
-  video.addEventListener('pause', () => {
-    document.getElementById('playBtn').textContent = '▶ Play';
-  });
+      // ─── PLAYBACK ───────────────────────────────────────────────────
+      function togglePlay() {
+        if (video.readyState < 2) return; // no hacer nada si no está listo
+        if (video.paused)
+          video.play().catch(() => toast("No se pudo reproducir", "error"));
+        else video.pause();
+      }
 
-  // Recovery: si el video se traba, intentar reanudar automáticamente
-  video.addEventListener('stalled', () => {
-    toast('⚠ Video trabado, intentando reanudar...', '');
-    setTimeout(() => {
-      if (video.paused) return;
-      const t = video.currentTime;
-      video.load();
-      video.currentTime = t;
-      video.play().catch(() => {});
-    }, 1500);
-  });
+      function setPlayText(txt) {
+        const a = document.getElementById("playBtn");
+        const b = document.getElementById("playBtnMini");
+        if (a) a.textContent = txt;
+        if (b) b.textContent = txt;
+      }
 
-  video.addEventListener('waiting', () => {
-    // Solo mostrar indicador visual, no hacer nada agresivo
-    document.getElementById('playBtn').textContent = '⏳';
-  });
+      function togglePlayMini() {
+        togglePlay();
+        // togglePlay will fire play/pause events that call setPlayText
+      }
 
-  video.addEventListener('canplay', () => {
-    document.getElementById('playBtn').textContent = video.paused ? '▶ Play' : '⏸ Pause';
-  });
+      function stepFrames(n) {
+        if (seekPending) return; // ignorar si hay seek en curso
+        seekPending = true;
+        video.pause();
+        const next = Math.max(
+          0,
+          Math.min(video.duration || 0, video.currentTime + n * frameDuration),
+        );
+        video.currentTime = next;
+        updateInfo();
+        // Esperar a que el seek termine antes de permitir otro
+        video.addEventListener(
+          "seeked",
+          () => {
+            seekPending = false;
+          },
+          { once: true },
+        );
+        // Timeout de seguridad por si el evento seeked nunca llega
+        setTimeout(() => {
+          seekPending = false;
+        }, 500);
+      }
 
-  video.addEventListener('error', () => {
-    toast('❌ Error en el video. Intenta recargarlo.', 'error');
-    document.getElementById('playBtn').textContent = '▶ Play';
-  });
+      function updateFPS() {
+        fps = parseInt(document.getElementById("fpsSelect").value);
+        frameDuration = 1 / fps;
+        document.getElementById("fpsInfo").textContent = fps;
+        updateInfo();
+      }
 
-  // ─── SCRUBBER ───────────────────────────────────────────────────
-  scrubber.addEventListener('mousedown', () => { isScrubbing = true; });
-  scrubber.addEventListener('touchstart', { passive: true }, () => { isScrubbing = true; });
+      function updateInfo() {
+        const t = video.currentTime;
+        document.getElementById("currentTime").textContent = formatTimeMs(t);
+        document.getElementById("frameNum").textContent = Math.round(t * fps);
+        document.getElementById("exactTime").textContent = t.toFixed(4) + "s";
+        // update scrubber fill visual
+        const pct = (scrubber.value / scrubber.max) * 100;
+        scrubber.style.background = `linear-gradient(to right, var(--accent) ${pct}%, var(--border) ${pct}%)`;
+      }
 
-  scrubber.addEventListener('input', () => {
-    // Throttle: no mandar seeks simultáneos al video (congela en móvil)
-    if (seekPending) return;
-    seekPending = true;
-    video.currentTime = scrubber.value / 1000;
-    updateInfo();
-    setTimeout(() => { seekPending = false; }, 80);
-  });
+      // ─── CAPTURE ────────────────────────────────────────────────────
+      function captureFrame() {
+        if (!video.src) {
+          toast("Carga un video primero.", "error");
+          return;
+        }
 
-  // Liberar isScrubbing en document para capturar mouseup/touchend fuera del slider
-  document.addEventListener('mouseup', () => { isScrubbing = false; });
-  document.addEventListener('touchend', () => { isScrubbing = false; });
-  document.addEventListener('touchcancel', () => { isScrubbing = false; });
+        // Capturar a 2x resolución para mejor calidad
+        const scale = 2;
+        frameCanvas.width = (video.videoWidth || 640) * scale;
+        frameCanvas.height = (video.videoHeight || 360) * scale;
+        ctx.save();
+        ctx.scale(scale, scale);
+        ctx.drawImage(
+          video,
+          0,
+          0,
+          video.videoWidth || 640,
+          video.videoHeight || 360,
+        );
+        ctx.restore();
 
-  // ─── PLAYBACK ───────────────────────────────────────────────────
-  function togglePlay() {
-    if (video.readyState < 2) return; // no hacer nada si no está listo
-    if (video.paused) video.play().catch(() => toast('No se pudo reproducir', 'error'));
-    else video.pause();
-  }
+        const dataUrl = frameCanvas.toDataURL("image/png");
+        const t = video.currentTime;
+        const frameNum = Math.round(t * fps);
 
-  function stepFrames(n) {
-    if (seekPending) return; // ignorar si hay seek en curso
-    seekPending = true;
-    video.pause();
-    const next = Math.max(0, Math.min(video.duration || 0, video.currentTime + n * frameDuration));
-    video.currentTime = next;
-    updateInfo();
-    // Esperar a que el seek termine antes de permitir otro
-    video.addEventListener('seeked', () => { seekPending = false; }, { once: true });
-    // Timeout de seguridad por si el evento seeked nunca llega
-    setTimeout(() => { seekPending = false; }, 500);
-  }
+        // Actualizar imagen principal (long-press → Lens)
+        const frameImg = document.getElementById("frameImg");
+        frameImg.src = dataUrl;
+        frameImg.style.display = "block";
+        document.getElementById("canvasPlaceholder").style.display = "none";
+        document.getElementById("longPressHint").style.display = "block";
 
-  function updateFPS() {
-    fps = parseInt(document.getElementById('fpsSelect').value);
-    frameDuration = 1 / fps;
-    document.getElementById('fpsInfo').textContent = fps;
-    updateInfo();
-  }
+        frameCanvas.toBlob(
+          (blob) => {
+            capturedBlob = blob;
+            lensBtn.disabled = false;
 
-  function updateInfo() {
-    const t = video.currentTime;
-    document.getElementById('currentTime').textContent = formatTimeMs(t);
-    document.getElementById('frameNum').textContent = Math.round(t * fps);
-    document.getElementById('exactTime').textContent = t.toFixed(4) + 's';
-    // update scrubber fill visual
-    const pct = (scrubber.value / scrubber.max) * 100;
-    scrubber.style.background = `linear-gradient(to right, var(--accent) ${pct}%, var(--border) ${pct}%)`;
-  }
+            // Agregar al historial
+            const entry = { dataUrl, time: t, frame: frameNum, blob };
+            frameHistory.unshift(entry);
+            renderHistory();
+          },
+          "image/png",
+          1,
+        );
 
-  // ─── CAPTURE ────────────────────────────────────────────────────
-  function captureFrame() {
-    if (!video.src) { toast('Carga un video primero.', 'error'); return; }
+        toast(
+          "✅ Frame " + frameNum + " capturado — long press para Lens",
+          "success",
+        );
+      }
 
-    frameCanvas.width = video.videoWidth || 640;
-    frameCanvas.height = video.videoHeight || 360;
-    ctx.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
+      // ─── HISTORIAL ──────────────────────────────────────────────────
+      function renderHistory() {
+        const grid = document.getElementById("historyGrid");
+        const section = document.getElementById("historySection");
+        document.getElementById("historyCount").textContent =
+          frameHistory.length;
 
-    const dataUrl = frameCanvas.toDataURL('image/png');
-    const t = video.currentTime;
-    const frameNum = Math.round(t * fps);
+        if (frameHistory.length === 0) {
+          section.style.display = "none";
+          return;
+        }
+        section.style.display = "block";
+        grid.innerHTML = "";
+        // aplicar filtro de búsqueda
+        const list = frameHistory.filter((entry) => {
+          if (!historyFilter) return true;
+          const q = historyFilter.toLowerCase();
+          return (
+            `f${entry.frame}`.includes(q) || entry.time.toFixed(2).includes(q)
+          );
+        });
 
-    // Actualizar imagen principal (long-press → Lens)
-    const frameImg = document.getElementById('frameImg');
-    frameImg.src = dataUrl;
-    frameImg.style.display = 'block';
-    document.getElementById('canvasPlaceholder').style.display = 'none';
-    document.getElementById('longPressHint').style.display = 'block';
+        if (list.length === 0) {
+          grid.innerHTML =
+            '<div style="color:var(--muted);padding:12px;text-align:center;">No hay coincidencias</div>';
+          return;
+        }
 
-    frameCanvas.toBlob(blob => {
-      capturedBlob = blob;
-      lensBtn.disabled = false;
+        list.forEach((entry, i) => {
+          const idx = frameHistory.indexOf(entry);
+          const item = document.createElement("div");
+          item.className = "history-item" + (idx === 0 ? " active" : "");
 
-      // Agregar al historial
-      const entry = { dataUrl, time: t, frame: frameNum, blob };
-      frameHistory.unshift(entry);
-      renderHistory();
-    }, 'image/png');
+          let checkboxHtml = "";
+          if (selectionMode)
+            checkboxHtml = `<input type="checkbox" class="h-check" data-idx="${idx}" onchange="toggleItemSelection(${idx}, this.checked)" ${selectedItems.has(idx) ? "checked" : ""} />`;
 
-    toast('✅ Frame ' + frameNum + ' capturado — long press para Lens', 'success');
-  }
-
-  // ─── HISTORIAL ──────────────────────────────────────────────────
-  function renderHistory() {
-    const grid = document.getElementById('historyGrid');
-    const section = document.getElementById('historySection');
-    document.getElementById('historyCount').textContent = frameHistory.length;
-
-    if (frameHistory.length === 0) {
-      section.style.display = 'none';
-      return;
-    }
-    section.style.display = 'block';
-
-    grid.innerHTML = '';
-    frameHistory.forEach((entry, i) => {
-      const item = document.createElement('div');
-      item.className = 'history-item' + (i === 0 ? ' active' : '');
-      item.innerHTML = `
+          item.innerHTML = `
+        ${checkboxHtml}
         <img src="${entry.dataUrl}" alt="frame ${entry.frame}" draggable="true">
         <div class="h-meta">f${entry.frame} · ${entry.time.toFixed(2)}s</div>
-        <button class="h-del" onclick="deleteHistoryItem(${i}, event)">✕</button>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn" style="font-size:0.7rem;padding:4px 8px;" onmouseover="this.dataset.idx = '${idx}';" onclick="openLensForEntry(parseInt(this.dataset.idx))">Buscar</button>
+          <button class="h-del" onclick="deleteHistoryItem(${idx}, event)">✕</button>
+        </div>
       `;
-      // Click en thumbnail → lo carga como frame activo
-      item.querySelector('img').addEventListener('click', () => loadHistoryItem(i));
-      // Long press nativo también funciona en estas imágenes
-      grid.appendChild(item);
-    });
-  }
 
-  function loadHistoryItem(i) {
-    const entry = frameHistory[i];
-    const frameImg = document.getElementById('frameImg');
-    frameImg.src = entry.dataUrl;
-    frameImg.style.display = 'block';
-    document.getElementById('canvasPlaceholder').style.display = 'none';
-    document.getElementById('longPressHint').style.display = 'block';
-    capturedBlob = entry.blob;
-    lensBtn.disabled = false;
-    // Marcar activo
-    document.querySelectorAll('.history-item').forEach((el, idx) => {
-      el.classList.toggle('active', idx === i);
-    });
-    toast('Frame ' + entry.frame + ' cargado desde historial', '');
-  }
+          item
+            .querySelector("img")
+            .addEventListener("click", () => loadHistoryItem(idx));
+          grid.appendChild(item);
+        });
+      }
 
-  function deleteHistoryItem(i, e) {
-    e.stopPropagation();
-    frameHistory.splice(i, 1);
-    renderHistory();
-  }
+      function filterHistory(v) {
+        historyFilter = (v || "").trim();
+        renderHistory();
+      }
 
-  function clearHistory() {
-    frameHistory = [];
-    renderHistory();
-    toast('Historial limpiado', '');
-  }
+      function toggleSelectMode() {
+        selectionMode = !selectionMode;
+        document.getElementById("toggleSelectBtn").textContent = selectionMode
+          ? "Cancelar"
+          : "Seleccionar";
+        document.getElementById("deleteSelectedBtn").style.display =
+          selectionMode ? "inline-flex" : "none";
+        if (!selectionMode) selectedItems.clear();
+        renderHistory();
+      }
 
-  // ─── GOOGLE LENS ────────────────────────────────────────────────
-  function openLens() {
-    if (!capturedBlob) { toast('Captura un frame primero.', 'error'); return; }
+      function toggleItemSelection(idx, checked) {
+        if (checked) selectedItems.add(idx);
+        else selectedItems.delete(idx);
+      }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result;
-      const lensUrl = 'https://lens.google.com/uploadbyurl?url=' + encodeURIComponent(dataUrl);
-      window.location.href = lensUrl;
-      toast('🔍 Abriendo Google Lens en la web', 'success');
-    };
-    reader.onerror = () => {
-      toast('No se pudo preparar la captura para Lens.', 'error');
-    };
-    reader.readAsDataURL(capturedBlob);
-  }
+      function deleteSelected() {
+        if (selectedItems.size === 0) {
+          toast("No hay items seleccionados", "error");
+          return;
+        }
+        // eliminar por índice en orden descendente
+        const ids = Array.from(selectedItems).sort((a, b) => b - a);
+        ids.forEach((i) => {
+          frameHistory.splice(i, 1);
+        });
+        selectedItems.clear();
+        selectionMode = false;
+        document.getElementById("toggleSelectBtn").textContent = "Seleccionar";
+        document.getElementById("deleteSelectedBtn").style.display = "none";
+        renderHistory();
+        toast("Seleccionados eliminados", "");
+      }
 
-  // ─── RESET ──────────────────────────────────────────────────────
-  function resetPlayer() {
-    video.pause();
-    video.src = '';
-    video.load();
-    video.playbackRate = 1;
-    // Liberar memoria del blob
-    if (currentVideoURL) {
-      URL.revokeObjectURL(currentVideoURL);
-      currentVideoURL = null;
-    }
-    fileInput.value = '';
-    capturedBlob = null;
-    seekPending = false;
-    isScrubbing = false;
-    lensBtn.disabled = true;
-    frameCanvas.style.display = 'none';
-    document.getElementById('frameImg').style.display = 'none';
-    document.getElementById('frameImg').src = '';
-    document.getElementById('longPressHint').style.display = 'none';
-    document.getElementById('canvasPlaceholder').style.display = 'block';
-    document.getElementById('speedSelect').value = '1';
-    document.getElementById('playBtn').textContent = '▶ Play';
-    frameHistory = [];
-    renderHistory();
-    playerSection.classList.remove('visible');
-    dropzone.style.display = 'flex';
-    scrubber.value = 0;
-    scrubber.style.background = '';
-  }
+      // Abrir Lens para una entrada específica
+      function openLensForEntry(i) {
+        const entry = frameHistory[i];
+        if (!entry) {
+          toast("No hay entrada", "error");
+          return;
+        }
+        const file = new File([entry.blob], "frame_" + entry.frame + ".png", {
+          type: "image/png",
+        });
+        if (navigator.share) {
+          navigator
+            .share({
+              files: [file],
+              title: "Frame " + entry.frame,
+            })
+            .catch(() => {});
+          toast("🔍 Compartiendo frame " + entry.frame, "success");
+        } else {
+          toast("Share no disponible en este navegador", "error");
+        }
+      }
 
-  // ─── KEYBOARD ───────────────────────────────────────────────────
-  document.addEventListener('keydown', e => {
-    if (!video.src) return;
-    const tag = document.activeElement.tagName;
-    if (tag === 'INPUT' || tag === 'SELECT') return;
+      function loadHistoryItem(i) {
+        const entry = frameHistory[i];
+        const frameImg = document.getElementById("frameImg");
+        frameImg.src = entry.dataUrl;
+        frameImg.style.display = "block";
+        document.getElementById("canvasPlaceholder").style.display = "none";
+        document.getElementById("longPressHint").style.display = "block";
+        capturedBlob = entry.blob;
+        lensBtn.disabled = false;
+        // Marcar activo
+        document.querySelectorAll(".history-item").forEach((el, idx) => {
+          el.classList.toggle("active", idx === i);
+        });
+        toast("Frame " + entry.frame + " cargado desde historial", "");
+      }
 
-    switch(e.key) {
-      case 'ArrowLeft':  e.preventDefault(); stepFrames(-1); break;
-      case 'ArrowRight': e.preventDefault(); stepFrames(1); break;
-      case ' ':          e.preventDefault(); togglePlay(); break;
-      case 'c': case 'C': captureFrame(); break;
-      case 'l': case 'L': if (!lensBtn.disabled) openLens(); break;
-    }
-  });
+      function deleteHistoryItem(i, e) {
+        e.stopPropagation();
+        frameHistory.splice(i, 1);
+        renderHistory();
+      }
 
-  // ─── HELPERS ────────────────────────────────────────────────────
-  function formatTime(s) {
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60).toString().padStart(2, '0');
-    return `${m}:${sec}`;
-  }
+      function clearHistory() {
+        frameHistory = [];
+        renderHistory();
+        toast("Historial limpiado", "");
+      }
 
-  function formatTimeMs(s) {
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60).toString().padStart(2, '0');
-    const ms = Math.floor((s % 1) * 1000).toString().padStart(3, '0');
-    return `${m}:${sec}.${ms}`;
-  }
+      // ─── GOOGLE LENS ────────────────────────────────────────────────
+      function openLens() {
+        if (!capturedBlob) {
+          toast("Captura un frame primero.", "error");
+          return;
+        }
+        const frameNum = Math.round(video.currentTime * fps);
+        const file = new File([capturedBlob], "frame_" + frameNum + ".png", {
+          type: "image/png",
+        });
+        if (navigator.share) {
+          navigator
+            .share({ files: [file], title: "Frame " + frameNum })
+            .catch(() => {});
+          toast("🔍 Compartiendo frame " + frameNum, "success");
+        } else {
+          toast("Share no disponible en este navegador", "error");
+        }
+      }
 
-  let toastTimer;
-  function toast(msg, type = '') {
-    const el = document.getElementById('toast');
-    el.textContent = msg;
-    el.className = 'show ' + type;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.className = '', 3500);
-  }
-  // ─── SERVICE WORKER ─────────────────────────────────────────────
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
-    });
-  }
-</script>
-</body>
+      // ─── RESET ──────────────────────────────────────────────────────
+      function resetPlayer() {
+        video.pause();
+        video.src = "";
+        video.load();
+        video.playbackRate = 1;
+        // Liberar memoria del blob
+        if (currentVideoURL) {
+          URL.revokeObjectURL(currentVideoURL);
+          currentVideoURL = null;
+        }
+        fileInput.value = "";
+        capturedBlob = null;
+        seekPending = false;
+        isScrubbing = false;
+        lensBtn.disabled = true;
+        frameCanvas.style.display = "none";
+        document.getElementById("frameImg").style.display = "none";
+        document.getElementById("frameImg").src = "";
+        document.getElementById("longPressHint").style.display = "none";
+        document.getElementById("canvasPlaceholder").style.display = "block";
+        document.getElementById("speedSelect").value = "1";
+        document.getElementById("playBtn").textContent = "▶ Play";
+        frameHistory = [];
+        renderHistory();
+        playerSection.classList.remove("visible");
+        dropzone.style.display = "flex";
+        scrubber.value = 0;
+        scrubber.style.background = "";
+      }
+
+      // ─── KEYBOARD ───────────────────────────────────────────────────
+      document.addEventListener("keydown", (e) => {
+        if (!video.src) return;
+        const tag = document.activeElement.tagName;
+        if (tag === "INPUT" || tag === "SELECT") return;
+
+        switch (e.key) {
+          case "ArrowLeft":
+            e.preventDefault();
+            stepFrames(-1);
+            break;
+          case "ArrowRight":
+            e.preventDefault();
+            stepFrames(1);
+            break;
+          case " ":
+            e.preventDefault();
+            togglePlay();
+            break;
+          case "c":
+          case "C":
+            captureFrame();
+            break;
+          case "l":
+          case "L":
+            if (!lensBtn.disabled) openLens();
+            break;
+        }
+      });
+
+      // ─── HELPERS ────────────────────────────────────────────────────
+      function formatTime(s) {
+        const m = Math.floor(s / 60);
+        const sec = Math.floor(s % 60)
+          .toString()
+          .padStart(2, "0");
+        return `${m}:${sec}`;
+      }
+
+      function formatTimeMs(s) {
+        const m = Math.floor(s / 60);
+        const sec = Math.floor(s % 60)
+          .toString()
+          .padStart(2, "0");
+        const ms = Math.floor((s % 1) * 1000)
+          .toString()
+          .padStart(3, "0");
+        return `${m}:${sec}.${ms}`;
+      }
+
+      let toastTimer;
+      function toast(msg, type = "") {
+        const el = document.getElementById("toast");
+        el.textContent = msg;
+        el.className = "show " + type;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => (el.className = ""), 3500);
+      }
+      // ─── SERVICE WORKER ─────────────────────────────────────────────
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("sw.js").catch(() => {});
+        });
+      }
+    </script>
+  </body>
 </html>
