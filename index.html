@@ -887,21 +887,7 @@
     reader.onload = () => {
       const dataUrl = reader.result;
       const lensUrl = 'https://lens.google.com/uploadbyurl?url=' + encodeURIComponent(dataUrl);
-      const isAndroid = /Android/i.test(navigator.userAgent || '');
-
-      if (isAndroid) {
-        const intentUrl = 'intent://lens.google.com/uploadbyurl?url=' + encodeURIComponent(dataUrl) +
-          '#Intent;scheme=https;package=com.google.android.googlequicksearchbox;S.browser_fallback_url=' +
-          encodeURIComponent(lensUrl) + ';end';
-        window.location.href = intentUrl;
-        toast('🔍 Intentando abrir Google Lens directamente', 'success');
-        return;
-      }
-
-      const win = window.open(lensUrl, '_blank', 'noopener,noreferrer');
-      if (!win) {
-        window.location.href = lensUrl;
-      }
+      window.location.href = lensUrl;
       toast('🔍 Abriendo Google Lens en la web', 'success');
     };
     reader.onerror = () => {
