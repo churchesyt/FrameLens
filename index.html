@@ -665,6 +665,15 @@
           <button class="btn" onclick="captureFrame()" title="Capturar">
             📷
           </button>
+          <button
+            class="btn"
+            id="convertGifBtn"
+            onclick="convertGifToVideo()"
+            style="display: none"
+            title="Convertir GIF a video"
+          >
+            🔁 Convertir GIF
+          </button>
         </div>
 
         <div class="capture-panel">
@@ -1059,6 +1068,8 @@
           imageViewer.style.display = "block";
           video.style.display = "none";
           document.getElementById("playBtn").disabled = true;
+          document.getElementById("convertGifBtn").style.display =
+            "inline-flex";
           dropzone.style.display = "none";
           playerSection.classList.add("visible");
           toast("Imagen cargada: " + file.name.slice(0, 40), "success");
@@ -1071,6 +1082,7 @@
         imageViewer.style.display = "none";
         video.style.display = "block";
         document.getElementById("playBtn").disabled = false;
+        document.getElementById("convertGifBtn").style.display = "none";
         dropzone.style.display = "none";
         playerSection.classList.add("visible");
         toast("Video cargado: " + file.name.slice(0, 40), "success");
@@ -1171,6 +1183,13 @@
 
       // ─── PLAYBACK ───────────────────────────────────────────────────
       function togglePlay() {
+        if (isImageSource) {
+          toast(
+            "GIFs no pueden pausarse/seekear aquí. Presiona 'Convertir GIF' para convertirlo a video.",
+            "info",
+          );
+          return;
+        }
         if (video.readyState < 2) return; // no hacer nada si no está listo
         if (video.paused)
           video.play().catch(() => toast("No se pudo reproducir", "error"));
@@ -1472,6 +1491,8 @@
             return;
           }
 
+          // No imageSource: continue with video seek/capture
+
           if (!video.src) {
             reject("No hay video cargado");
             return;
@@ -1631,6 +1652,83 @@
         }
 
         toast("Carga el video o GIF original para cargar este frame", "error");
+      }
+
+      // Convierte un GIF/APNG animado visualizado en `imageViewer` a un video reproducible.
+      function convertGifToVideo(durationSec = 6) {
+        if (!isImageSource) {
+          toast("No hay GIF cargado.", "error");
+          return;
+        }
+        const img = document.getElementById("imageViewer");
+        const w = img.naturalWidth || 640;
+        const h = img.naturalHeight || 360;
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const cctx = canvas.getContext("2d");
+
+        const stream = canvas.captureStream(30);
+        let mime = "video/webm;codecs=vp9";
+        if (!MediaRecorder.isTypeSupported(mime))
+          mime = "video/webm;codecs=vp8";
+        if (!MediaRecorder.isTypeSupported(mime)) mime = "video/webm";
+        if (!MediaRecorder.isTypeSupported(mime)) {
+          toast(
+            "MediaRecorder no soportado para conversión en este navegador.",
+            "error",
+          );
+          return;
+        }
+
+        const rec = new MediaRecorder(stream, { type: mime });
+        const chunks = [];
+        rec.ondataavailable = (e) => chunks.push(e.data);
+        rec.onerror = (e) =>
+          toast("Error durante la grabación: " + e.message, "error");
+        rec.onstop = () => {
+          try {
+            const blob = new Blob(chunks, { type: "video/webm" });
+            if (currentVideoURL) {
+              URL.revokeObjectURL(currentVideoURL);
+              currentVideoURL = null;
+            }
+            currentVideoURL = URL.createObjectURL(blob);
+            video.src = currentVideoURL;
+            video.load();
+            imageViewer.style.display = "none";
+            video.style.display = "block";
+            isImageSource = false;
+            document.getElementById("playBtn").disabled = false;
+            document.getElementById("convertGifBtn").style.display = "none";
+            toast(
+              "GIF convertido a video — ahora puedes pausar y avanzar frames",
+              "success",
+            );
+          } catch (e) {
+            toast("Error al finalizar la conversión: " + e, "error");
+          }
+        };
+
+        let running = true;
+        function draw() {
+          if (!running) return;
+          cctx.clearRect(0, 0, w, h);
+          cctx.drawImage(img, 0, 0, w, h);
+          requestAnimationFrame(draw);
+        }
+
+        try {
+          rec.start();
+          draw();
+          toast("Convirtiendo GIF a video... espera " + durationSec + "s", "");
+          setTimeout(() => {
+            running = false;
+            if (rec.state !== "inactive") rec.stop();
+          }, durationSec * 1000);
+        } catch (e) {
+          toast("No se pudo iniciar la conversión: " + e.message, "error");
+        }
       }
 
       function markActive(i) {
