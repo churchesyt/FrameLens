@@ -907,7 +907,73 @@
       let isScrubbing = false;
       let frameHistory = [];
       let currentVideoURL = null; // para revocar el blob cuando cambie el video
+      let currentFrameURL = null; // preview principal del frame actual
       let seekPending = false; // throttle de seeks para no congelar
+      let seekDebounceTimer = null;
+      let seekRecoveryTimer = null;
+      let isRecoveringVideo = false;
+      const MAX_HISTORY_ITEMS = 50;
+      const HISTORY_PREVIEW_WIDTH = 320;
+
+      // ─── STORAGE ────────────────────────────────────────────────────
+      const STORAGE_KEY = "framelens_history";
+      const STORAGE_TIME_KEY = "framelens_lastTime";
+
+      function saveHistoryToStorage() {
+        try {
+          const toSave = frameHistory.map((entry) => ({
+            previewUrl: entry.previewUrl,
+            time: entry.time,
+            frame: entry.frame,
+          }));
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+        } catch (e) {
+          console.warn("No se pudo guardar historial:", e.message);
+        }
+      }
+
+      function loadHistoryFromStorage() {
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+              frameHistory = parsed.map((item) => ({
+                previewUrl: item.previewUrl,
+                time: item.time,
+                frame: item.frame,
+                blob: null,
+              }));
+              renderHistory();
+              toast(
+                "✅ Historial restaurado (" + frameHistory.length + ")",
+                "",
+              );
+              return true;
+            }
+          }
+        } catch (e) {
+          console.warn("Error al cargar historial:", e.message);
+        }
+        return false;
+      }
+
+      function saveLastTime(t) {
+        try {
+          localStorage.setItem(STORAGE_TIME_KEY, t.toFixed(2));
+        } catch (e) {}
+      }
+
+      function getLastTime() {
+        try {
+          const t = localStorage.getItem(STORAGE_TIME_KEY);
+          return t ? parseFloat(t) : null;
+        } catch (e) {}
+        return null;
+      }
+
+      // Cargar historial al iniciar
+      loadHistoryFromStorage();
 
       // ─── SPEED ──────────────────────────────────────────────────────
       function updateSpeed() {
@@ -963,6 +1029,10 @@
         if (!isScrubbing) {
           scrubber.value = Math.floor(video.currentTime * 1000);
           updateInfo();
+          // Guardar tiempo cada segundo aproximadamente
+          if (Math.floor(video.currentTime) % 1 === 0) {
+            saveLastTime(video.currentTime);
+          }
         }
       });
 
@@ -989,10 +1059,22 @@
       video.addEventListener("waiting", () => {
         // Solo mostrar indicador visual, no hacer nada agresivo
         document.getElementById("playBtn").textContent = "⏳";
+        clearTimeout(seekRecoveryTimer);
+        seekRecoveryTimer = setTimeout(() => {
+          if (video.readyState < 2 || seekPending) {
+            recoverVideoFromStall("waiting");
+          }
+        }, 1400);
       });
 
       video.addEventListener("canplay", () => {
+        clearTimeout(seekRecoveryTimer);
         setPlayText(video.paused ? "▶ Play" : "⏸ Pause");
+      });
+
+      video.addEventListener("seeked", () => {
+        seekPending = false;
+        clearTimeout(seekRecoveryTimer);
       });
 
       video.addEventListener("error", () => {
@@ -1009,14 +1091,11 @@
       });
 
       scrubber.addEventListener("input", () => {
-        // Throttle: no mandar seeks simultáneos al video (congela en móvil)
-        if (seekPending) return;
-        seekPending = true;
-        video.currentTime = scrubber.value / 1000;
-        updateInfo();
-        setTimeout(() => {
-          seekPending = false;
-        }, 80);
+        queueSeek(scrubber.value / 1000, false);
+      });
+
+      scrubber.addEventListener("change", () => {
+        queueSeek(scrubber.value / 1000, true);
       });
 
       // Liberar isScrubbing en document para capturar mouseup/touchend fuera del slider
@@ -1051,27 +1130,67 @@
       }
 
       function stepFrames(n) {
-        if (seekPending) return; // ignorar si hay seek en curso
-        seekPending = true;
         video.pause();
         const next = Math.max(
           0,
           Math.min(video.duration || 0, video.currentTime + n * frameDuration),
         );
-        video.currentTime = next;
-        updateInfo();
-        // Esperar a que el seek termine antes de permitir otro
-        video.addEventListener(
-          "seeked",
-          () => {
-            seekPending = false;
-          },
-          { once: true },
+        queueSeek(next, true);
+      }
+
+      function queueSeek(targetTime, immediate) {
+        const safeTarget = Math.max(
+          0,
+          Math.min(video.duration || 0, targetTime),
         );
-        // Timeout de seguridad por si el evento seeked nunca llega
-        setTimeout(() => {
-          seekPending = false;
-        }, 500);
+        if (seekDebounceTimer) {
+          clearTimeout(seekDebounceTimer);
+          seekDebounceTimer = null;
+        }
+        if (immediate) {
+          performSeek(safeTarget);
+          return;
+        }
+        seekDebounceTimer = setTimeout(() => {
+          performSeek(safeTarget);
+        }, 90);
+      }
+
+      function performSeek(targetTime) {
+        if (!video.src || isRecoveringVideo) return;
+        seekPending = true;
+        video.currentTime = targetTime;
+        updateInfo();
+        clearTimeout(seekRecoveryTimer);
+        seekRecoveryTimer = setTimeout(() => {
+          if (seekPending || video.readyState < 2) {
+            recoverVideoFromStall("seek timeout");
+          }
+        }, 1400);
+      }
+
+      function recoverVideoFromStall(reason) {
+        if (isRecoveringVideo || !video.src) return;
+        isRecoveringVideo = true;
+        const wasPlaying = !video.paused;
+        const t = Math.max(
+          0,
+          Math.min(video.duration || 0, video.currentTime || 0),
+        );
+        clearTimeout(seekRecoveryTimer);
+        seekPending = false;
+        try {
+          video.pause();
+          video.currentTime = t;
+          video.load();
+          video.currentTime = t;
+          if (wasPlaying) video.play().catch(() => {});
+          toast("⚠ Recuperando video trabado (" + reason + ")", "");
+        } finally {
+          setTimeout(() => {
+            isRecoveringVideo = false;
+          }, 500);
+        }
       }
 
       function updateFPS() {
@@ -1113,26 +1232,40 @@
         );
         ctx.restore();
 
-        const dataUrl = frameCanvas.toDataURL("image/png");
         const t = video.currentTime;
         const frameNum = Math.round(t * fps);
 
-        // Actualizar imagen principal (long-press → Lens)
-        const frameImg = document.getElementById("frameImg");
-        frameImg.src = dataUrl;
-        frameImg.style.display = "block";
-        document.getElementById("canvasPlaceholder").style.display = "none";
-        document.getElementById("longPressHint").style.display = "block";
+        // Miniatura ligera para historial (evita guardar base64 gigante por captura)
+        const previewCanvas = document.createElement("canvas");
+        const srcW = frameCanvas.width;
+        const srcH = frameCanvas.height;
+        const targetW = Math.min(HISTORY_PREVIEW_WIDTH, srcW);
+        const targetH = Math.max(1, Math.round((srcH / srcW) * targetW));
+        previewCanvas.width = targetW;
+        previewCanvas.height = targetH;
+        const previewCtx = previewCanvas.getContext("2d");
+        previewCtx.drawImage(frameCanvas, 0, 0, targetW, targetH);
+        const previewUrl = previewCanvas.toDataURL("image/webp", 0.82);
 
         frameCanvas.toBlob(
           (blob) => {
             capturedBlob = blob;
             lensBtn.disabled = false;
 
+            setMainFrameFromBlob(blob);
+
             // Agregar al historial
-            const entry = { dataUrl, time: t, frame: frameNum, blob };
+            const entry = { previewUrl, time: t, frame: frameNum, blob };
             frameHistory.unshift(entry);
+            if (frameHistory.length > MAX_HISTORY_ITEMS) {
+              frameHistory = frameHistory.slice(0, MAX_HISTORY_ITEMS);
+              toast(
+                "Historial limitado a " + MAX_HISTORY_ITEMS + " frames",
+                "",
+              );
+            }
             renderHistory();
+            saveHistoryToStorage();
           },
           "image/png",
           1,
@@ -1183,7 +1316,7 @@
 
           item.innerHTML = `
         ${checkboxHtml}
-        <img src="${entry.dataUrl}" alt="frame ${entry.frame}" draggable="true">
+        <img src="${entry.previewUrl}" alt="frame ${entry.frame}" draggable="true">
         <div class="h-meta">f${entry.frame} · ${entry.time.toFixed(2)}s</div>
         <div style="display:flex;gap:6px;align-items:center">
           <button class="btn" style="font-size:0.7rem;padding:4px 8px;" onmouseover="this.dataset.idx = '${idx}';" onclick="openLensForEntry(parseInt(this.dataset.idx))">Buscar</button>
@@ -1234,6 +1367,7 @@
         document.getElementById("toggleSelectBtn").textContent = "Seleccionar";
         document.getElementById("deleteSelectedBtn").style.display = "none";
         renderHistory();
+        saveHistoryToStorage();
         toast("Seleccionados eliminados", "");
       }
 
@@ -1262,11 +1396,7 @@
 
       function loadHistoryItem(i) {
         const entry = frameHistory[i];
-        const frameImg = document.getElementById("frameImg");
-        frameImg.src = entry.dataUrl;
-        frameImg.style.display = "block";
-        document.getElementById("canvasPlaceholder").style.display = "none";
-        document.getElementById("longPressHint").style.display = "block";
+        setMainFrameFromBlob(entry.blob);
         capturedBlob = entry.blob;
         lensBtn.disabled = false;
         // Marcar activo
@@ -1280,12 +1410,27 @@
         e.stopPropagation();
         frameHistory.splice(i, 1);
         renderHistory();
+        saveHistoryToStorage();
       }
 
       function clearHistory() {
         frameHistory = [];
         renderHistory();
+        saveHistoryToStorage();
         toast("Historial limpiado", "");
+      }
+
+      function setMainFrameFromBlob(blob) {
+        const frameImg = document.getElementById("frameImg");
+        if (currentFrameURL) {
+          URL.revokeObjectURL(currentFrameURL);
+          currentFrameURL = null;
+        }
+        currentFrameURL = URL.createObjectURL(blob);
+        frameImg.src = currentFrameURL;
+        frameImg.style.display = "block";
+        document.getElementById("canvasPlaceholder").style.display = "none";
+        document.getElementById("longPressHint").style.display = "block";
       }
 
       // ─── GOOGLE LENS ────────────────────────────────────────────────
@@ -1331,6 +1476,10 @@
         document.getElementById("canvasPlaceholder").style.display = "block";
         document.getElementById("speedSelect").value = "1";
         document.getElementById("playBtn").textContent = "▶ Play";
+        if (currentFrameURL) {
+          URL.revokeObjectURL(currentFrameURL);
+          currentFrameURL = null;
+        }
         frameHistory = [];
         renderHistory();
         playerSection.classList.remove("visible");
