@@ -545,10 +545,10 @@
           📷 Capturar Frame
         </button>
         <button class="btn lens" id="lensBtn" onclick="openLens()" disabled style="justify-content:center;">
-          🔍 Compartir con Lens
+          🔍 Abrir Lens
         </button>
         <div class="lens-note">
-          <strong>Long press</strong> sobre la imagen → "Buscar con Google Lens" · o usa la hoja de compartir para enviarla sin descargar. <strong>[C]</strong> captura
+          <strong>Long press</strong> sobre la imagen → "Buscar con Google Lens" · o ábrela directo desde el navegador. <strong>[C]</strong> captura
         </div>
       </div>
     </div>
@@ -556,7 +556,7 @@
     <!-- LENS LINK BANNER -->
     <a id="lensLink" href="https://lens.google.com/" target="_blank" rel="noopener" style="display:none;">
       <span>🔍</span>
-      <span>Abrir Google Lens &rarr; subir manualmente si el compartir no aparece</span>
+      <span>Abrir Google Lens &rarr; si no abre la app, caerá a la versión web</span>
     </a>
   </div>
 
@@ -880,27 +880,34 @@
   }
 
   // ─── GOOGLE LENS ────────────────────────────────────────────────
-  async function openLens() {
+  function openLens() {
     if (!capturedBlob) { toast('Captura un frame primero.', 'error'); return; }
 
-    const file = new File([capturedBlob], 'frame.png', { type: 'image/png' });
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const lensUrl = 'https://lens.google.com/uploadbyurl?url=' + encodeURIComponent(dataUrl);
+      const isAndroid = /Android/i.test(navigator.userAgent || '');
 
-    if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
-      try {
-        await navigator.share({
-          files: [file],
-          title: 'FrameLens',
-          text: 'Compartir captura para Google Lens',
-        });
-        toast('🔍 Abre Google Lens desde la hoja de compartir si aparece como destino', 'success');
+      if (isAndroid) {
+        const intentUrl = 'intent://lens.google.com/uploadbyurl?url=' + encodeURIComponent(dataUrl) +
+          '#Intent;scheme=https;package=com.google.android.googlequicksearchbox;S.browser_fallback_url=' +
+          encodeURIComponent(lensUrl) + ';end';
+        window.location.href = intentUrl;
+        toast('🔍 Intentando abrir Google Lens directamente', 'success');
         return;
-      } catch (err) {
-        if (err && err.name === 'AbortError') return;
       }
-    }
 
-    window.open('https://lens.google.com/', '_blank', 'noopener');
-    toast('📎 Tu navegador no soporta compartir archivos; abre Lens manualmente y sube la captura', 'error');
+      const win = window.open(lensUrl, '_blank', 'noopener,noreferrer');
+      if (!win) {
+        window.location.href = lensUrl;
+      }
+      toast('🔍 Abriendo Google Lens en la web', 'success');
+    };
+    reader.onerror = () => {
+      toast('No se pudo preparar la captura para Lens.', 'error');
+    };
+    reader.readAsDataURL(capturedBlob);
   }
 
   // ─── RESET ──────────────────────────────────────────────────────
