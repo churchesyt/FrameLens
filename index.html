@@ -1739,7 +1739,12 @@
             try {
               // ImageDecoder espera ArrayBuffer/ReadableStream, no un File
               const buffer = await currentFile.arrayBuffer();
-              const decoder = new ImageDecoder({ data: buffer });
+              const mimeType = currentFile.type || "image/gif";
+              // Some implementations require the 'type' field when passing ArrayBuffer
+              const decoder = new ImageDecoder({
+                data: buffer,
+                type: mimeType,
+              });
               let keep = true;
               const fpsRec = 30;
               while (keep) {
