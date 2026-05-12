@@ -1737,7 +1737,9 @@
           // Preferir ImageDecoder (si está disponible) para extraer frames reales.
           if (window.ImageDecoder) {
             try {
-              const decoder = new ImageDecoder({ data: currentFile });
+              // ImageDecoder espera ArrayBuffer/ReadableStream, no un File
+              const buffer = await currentFile.arrayBuffer();
+              const decoder = new ImageDecoder({ data: buffer });
               let keep = true;
               const fpsRec = 30;
               while (keep) {
