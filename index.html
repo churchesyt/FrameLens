@@ -1674,6 +1674,15 @@
         const canvas = document.createElement("canvas");
         canvas.width = w;
         canvas.height = h;
+        // Insertar temporalmente en DOM (fuera de pantalla) para asegurar que
+        // captureStream reciba los frames en navegadores como Brave.
+        canvas.style.position = "fixed";
+        canvas.style.left = "-9999px";
+        canvas.style.top = "0";
+        canvas.style.width = w + "px";
+        canvas.style.height = h + "px";
+        canvas.setAttribute("data-temp-convert", "1");
+        document.body.appendChild(canvas);
         const cctx = canvas.getContext("2d");
 
         const stream = canvas.captureStream(30);
@@ -1776,6 +1785,12 @@
           }
 
           await onStopPromise;
+
+          // Limpiar canvas temporal del DOM
+          try {
+            const tmp = document.querySelector('canvas[data-temp-convert="1"]');
+            if (tmp && tmp.parentNode) tmp.parentNode.removeChild(tmp);
+          } catch (__) {}
         } catch (e) {
           toast(
             "No se pudo iniciar la conversión: " + (e.message || e),
