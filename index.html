@@ -51,27 +51,6 @@
         overflow-x: hidden;
       }
 
-      .history-controls {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-      }
-
-      @media (max-width: 520px) {
-        .history-controls {
-          justify-content: flex-start;
-          gap: 6px;
-        }
-        .drop-sub {
-          font-size: 0.78rem;
-        }
-        .history-item .h-meta {
-          font-size: 0.7rem;
-        }
-      }
-
       body {
         display: flex;
         flex-direction: column;
@@ -612,15 +591,9 @@
     <!-- DROP ZONE -->
     <div id="dropzone" onclick="document.getElementById('fileInput').click()">
       <div class="drop-icon">🎬</div>
-      <div class="drop-title">Sube o arrastra tu video o GIF</div>
-      <div class="drop-sub">
-        MP4 · WebM · MOV · AVI · MKV · GIF · APNG · WebP
-      </div>
-      <input
-        type="file"
-        id="fileInput"
-        accept="video/*,image/gif,image/webp,image/apng"
-      />
+      <div class="drop-title">Sube o arrastra tu video</div>
+      <div class="drop-sub">MP4 · WebM · MOV · AVI · MKV</div>
+      <input type="file" id="fileInput" accept="video/*" />
     </div>
 
     <!-- PLAYER -->
@@ -628,15 +601,6 @@
       <div class="media-row">
         <div class="video-wrap">
           <video id="video" preload="metadata"></video>
-          <img
-            id="imageViewer"
-            style="
-              display: none;
-              max-width: 100%;
-              height: auto;
-              border-radius: 6px;
-            "
-          />
         </div>
 
         <!-- MINI CONTROLS (compact, debajo del video) -->
@@ -665,28 +629,6 @@
           <button class="btn" onclick="captureFrame()" title="Capturar">
             📷
           </button>
-          <button
-            class="btn"
-            id="convertGifBtn"
-            onclick="convertGifToVideo()"
-            style="display: none"
-            title="Convertir GIF a video"
-          >
-            🔁 Convertir GIF
-          </button>
-          <span
-            id="gifInfo"
-            style="
-              display: none;
-              font-size: 0.66rem;
-              color: var(--accent);
-              border: 1px solid var(--border);
-              background: var(--surface2);
-              border-radius: 999px;
-              padding: 4px 8px;
-              white-space: nowrap;
-            "
-          ></span>
         </div>
 
         <div class="capture-panel">
@@ -913,7 +855,7 @@
             "
           />
         </div>
-        <div class="history-controls">
+        <div style="display: flex; align-items: center; gap: 8px">
           <button
             class="btn"
             onclick="toggleSelectMode()"
@@ -934,7 +876,6 @@
             class="btn danger"
             onclick="confirmClearHistory()"
             style="font-size: 0.62rem; padding: 4px 10px"
-            id="clearHistoryBtn"
           >
             🗑 Borrar todo
           </button>
@@ -963,8 +904,6 @@
       let fps = 30;
       let frameDuration = 1 / fps;
       let capturedBlob = null;
-      let isImageSource = false;
-      let currentFile = null;
       let isScrubbing = false;
       let frameHistory = [];
       let currentVideoURL = null; // para revocar el blob cuando cambie el video
@@ -973,7 +912,6 @@
       let seekDebounceTimer = null;
       let seekRecoveryTimer = null;
       let isRecoveringVideo = false;
-      let toastTimer = null;
       const MAX_HISTORY_ITEMS = 50;
       const HISTORY_PREVIEW_WIDTH = 320;
       const TRANSPARENT_PIXEL =
@@ -1013,8 +951,9 @@
                 blob: null,
               }));
               renderHistory();
-              console.info(
-                "Historial restaurado (" + frameHistory.length + ")",
+              toast(
+                "✅ Historial restaurado (" + frameHistory.length + ")",
+                "",
               );
               return true;
             }
@@ -1039,8 +978,6 @@
         return null;
       }
 
-      // Toast helper (declarar antes de cualquier uso)
-
       // Cargar historial al iniciar
       loadHistoryFromStorage();
 
@@ -1063,13 +1000,8 @@
         e.preventDefault();
         dropzone.classList.remove("drag-over");
         const file = e.dataTransfer.files[0];
-        if (!file) return;
-        // Aceptar video o imágenes animadas
-        if (file.type.startsWith("video/") || file.type.startsWith("image/")) {
-          loadVideo(file);
-        } else {
-          toast("Archivo no válido. Sube un video o GIF.", "error");
-        }
+        if (file && file.type.startsWith("video/")) loadVideo(file);
+        else toast("Archivo no válido. Sube un video.", "error");
       });
 
       fileInput.addEventListener("change", () => {
@@ -1077,51 +1009,14 @@
       });
 
       function loadVideo(file) {
-        currentFile = file;
-        const gifInfo = document.getElementById("gifInfo");
-        gifInfo.style.display = "none";
-        gifInfo.textContent = "";
         // Revocar blob anterior para liberar memoria
         if (currentVideoURL) {
           URL.revokeObjectURL(currentVideoURL);
           currentVideoURL = null;
         }
         currentVideoURL = URL.createObjectURL(file);
-        // Si es una imagen animada (GIF/APNG/WebP), usar el imageViewer
-        if (file.type && file.type.startsWith("image/")) {
-          isImageSource = true;
-          imageViewer.src = currentVideoURL;
-          imageViewer.style.display = "block";
-          video.style.display = "none";
-          document.getElementById("playBtn").disabled = true;
-          document.getElementById("convertGifBtn").style.display =
-            "inline-flex";
-          dropzone.style.display = "none";
-          playerSection.classList.add("visible");
-          toast("Imagen cargada: " + file.name.slice(0, 40), "success");
-
-          if (file.type === "image/gif") {
-            getGifDurationMs(file).then((durationMs) => {
-              if (currentFile !== file || !isImageSource) return;
-              if (durationMs && Number.isFinite(durationMs)) {
-                gifInfo.textContent =
-                  "GIF: " + (durationMs / 1000).toFixed(2) + "s";
-              } else {
-                gifInfo.textContent = "GIF: duración no detectada";
-              }
-              gifInfo.style.display = "inline-flex";
-            });
-          }
-          return;
-        }
-
-        isImageSource = false;
         video.src = currentVideoURL;
         video.load();
-        imageViewer.style.display = "none";
-        video.style.display = "block";
-        document.getElementById("playBtn").disabled = false;
-        document.getElementById("convertGifBtn").style.display = "none";
         dropzone.style.display = "none";
         playerSection.classList.add("visible");
         toast("Video cargado: " + file.name.slice(0, 40), "success");
@@ -1222,13 +1117,6 @@
 
       // ─── PLAYBACK ───────────────────────────────────────────────────
       function togglePlay() {
-        if (isImageSource) {
-          toast(
-            "GIFs no pueden pausarse/seekear aquí. Presiona 'Convertir GIF' para convertirlo a video.",
-            "info",
-          );
-          return;
-        }
         if (video.readyState < 2) return; // no hacer nada si no está listo
         if (video.paused)
           video.play().catch(() => toast("No se pudo reproducir", "error"));
@@ -1330,43 +1218,35 @@
 
       // ─── CAPTURE ────────────────────────────────────────────────────
       function captureFrame() {
-        if (!video.src && !isImageSource) {
-          toast("Carga un video o imagen primero.", "error");
+        if (!video.src) {
+          toast("Carga un video primero.", "error");
           return;
         }
 
         // Capturar a 2x resolución para mejor calidad
         const scale = 2;
-        let srcW, srcH, drawSource;
-        if (isImageSource) {
-          drawSource = document.getElementById("imageViewer");
-          srcW = drawSource.naturalWidth || 640;
-          srcH = drawSource.naturalHeight || 360;
-        } else {
-          drawSource = video;
-          srcW = video.videoWidth || 640;
-          srcH = video.videoHeight || 360;
-        }
-
-        frameCanvas.width = srcW * scale;
-        frameCanvas.height = srcH * scale;
+        frameCanvas.width = (video.videoWidth || 640) * scale;
+        frameCanvas.height = (video.videoHeight || 360) * scale;
         ctx.save();
         ctx.scale(scale, scale);
-        ctx.drawImage(drawSource, 0, 0, srcW, srcH);
+        ctx.drawImage(
+          video,
+          0,
+          0,
+          video.videoWidth || 640,
+          video.videoHeight || 360,
+        );
         ctx.restore();
 
-        const t = isImageSource ? 0 : video.currentTime;
+        const t = video.currentTime;
         const frameNum = Math.round(t * fps);
 
         // Miniatura ligera para historial (evita guardar base64 gigante por captura)
         const previewCanvas = document.createElement("canvas");
-        const previewSrcW = frameCanvas.width;
-        const previewSrcH = frameCanvas.height;
-        const targetW = Math.min(HISTORY_PREVIEW_WIDTH, previewSrcW);
-        const targetH = Math.max(
-          1,
-          Math.round((previewSrcH / previewSrcW) * targetW),
-        );
+        const srcW = frameCanvas.width;
+        const srcH = frameCanvas.height;
+        const targetW = Math.min(HISTORY_PREVIEW_WIDTH, srcW);
+        const targetH = Math.max(1, Math.round((srcH / srcW) * targetW));
         previewCanvas.width = targetW;
         previewCanvas.height = targetH;
         const previewCtx = previewCanvas.getContext("2d");
@@ -1501,37 +1381,6 @@
       // Abrir Lens para una entrada específica
       function captureFrameAtTime(targetTime) {
         return new Promise((resolve, reject) => {
-          // Si la fuente es una imagen animada, no podemos seekear; capturamos el frame actual
-          if (isImageSource) {
-            try {
-              const scale = 2;
-              const img = document.getElementById("imageViewer");
-              const w = img.naturalWidth || 640;
-              const h = img.naturalHeight || 360;
-              const tempCanvas = document.createElement("canvas");
-              tempCanvas.width = w * scale;
-              tempCanvas.height = h * scale;
-              const tempCtx = tempCanvas.getContext("2d");
-              tempCtx.save();
-              tempCtx.scale(scale, scale);
-              tempCtx.drawImage(img, 0, 0, w, h);
-              tempCtx.restore();
-              tempCanvas.toBlob(
-                (blob) => {
-                  if (blob) resolve(blob);
-                  else reject("No se pudo capturar el frame");
-                },
-                "image/png",
-                1,
-              );
-            } catch (e) {
-              reject(e.message || e);
-            }
-            return;
-          }
-
-          // No imageSource: continue with video seek/capture
-
           if (!video.src) {
             reject("No hay video cargado");
             return;
@@ -1583,88 +1432,6 @@
 
           video.addEventListener("seeked", onSeeked);
         });
-      }
-
-      async function getGifDurationMs(file) {
-        if (!file || file.type !== "image/gif") return null;
-        try {
-          const buffer = await file.arrayBuffer();
-          const bytes = new Uint8Array(buffer);
-          if (bytes.length < 13) return null;
-
-          // GIF87a / GIF89a
-          const isGif =
-            bytes[0] === 0x47 &&
-            bytes[1] === 0x49 &&
-            bytes[2] === 0x46 &&
-            bytes[3] === 0x38 &&
-            (bytes[4] === 0x39 || bytes[4] === 0x37) &&
-            bytes[5] === 0x61;
-          if (!isGif) return null;
-
-          let offset = 13;
-          if (bytes[10] & 0x80) {
-            const gctSize = 3 * (1 << ((bytes[10] & 0x07) + 1));
-            offset += gctSize;
-          }
-
-          let totalMs = 0;
-          let pendingDelayCs = 0;
-
-          while (offset < bytes.length) {
-            const blockId = bytes[offset++];
-            if (blockId === 0x3b) break; // trailer
-
-            if (blockId === 0x21) {
-              const label = bytes[offset++];
-              if (label === 0xf9) {
-                const blockSize = bytes[offset++];
-                if (blockSize === 4) {
-                  offset += 1; // packed
-                  const delay = bytes[offset] | (bytes[offset + 1] << 8);
-                  pendingDelayCs = delay || 1;
-                  offset += 2;
-                  offset += 1; // transparent color index
-                  offset += 1; // block terminator
-                } else {
-                  offset += blockSize;
-                }
-              } else {
-                while (offset < bytes.length) {
-                  const size = bytes[offset++];
-                  if (size === 0) break;
-                  offset += size;
-                }
-              }
-              continue;
-            }
-
-            if (blockId === 0x2c) {
-              offset += 8; // image descriptor
-              const packed = bytes[offset++];
-              if (packed & 0x80) {
-                const lctSize = 3 * (1 << ((packed & 0x07) + 1));
-                offset += lctSize;
-              }
-              offset += 1; // LZW min code size
-              while (offset < bytes.length) {
-                const size = bytes[offset++];
-                if (size === 0) break;
-                offset += size;
-              }
-              totalMs += Math.max(10, pendingDelayCs * 10);
-              pendingDelayCs = 0;
-              continue;
-            }
-
-            break;
-          }
-
-          return totalMs > 0 ? totalMs : null;
-        } catch (e) {
-          console.warn("No se pudo calcular la duración real del GIF:", e);
-          return null;
-        }
       }
 
       function openLensForEntry(i) {
@@ -1724,286 +1491,14 @@
 
       function loadHistoryItem(i) {
         const entry = frameHistory[i];
-        if (!entry) return;
-
-        // Si ya tenemos blob en memoria, usarlo
-        if (entry.blob) {
-          setMainFrameFromBlob(entry.blob);
-          capturedBlob = entry.blob;
-          lensBtn.disabled = false;
-          markActive(i);
-          toast("Frame " + entry.frame + " cargado desde historial", "");
-          return;
-        }
-
-        // Si hay una preview en memoria, convertir a blob y mostrar
-        if (entry.previewUrl) {
-          fetch(entry.previewUrl)
-            .then((r) => r.blob())
-            .then((b) => {
-              entry.blob = b;
-              setMainFrameFromBlob(b);
-              capturedBlob = b;
-              lensBtn.disabled = false;
-              markActive(i);
-              toast("Frame " + entry.frame + " cargado desde preview", "");
-            })
-            .catch(() => {
-              toast("No se pudo cargar la miniatura", "error");
-            });
-          return;
-        }
-
-        // Si hay video o imagen cargada, capturar en el tiempo guardado
-        if (video.src || isImageSource) {
-          toast("⏳ Cargando frame " + entry.frame + "...", "");
-          captureFrameAtTime(entry.time)
-            .then((b) => {
-              entry.blob = b;
-              setMainFrameFromBlob(b);
-              capturedBlob = b;
-              lensBtn.disabled = false;
-              markActive(i);
-              toast("Frame " + entry.frame + " cargado", "");
-            })
-            .catch((e) => {
-              toast("Error al capturar: " + e, "error");
-            });
-          return;
-        }
-
-        toast("Carga el video o GIF original para cargar este frame", "error");
-      }
-
-      // Convierte un GIF/APNG animado visualizado en `imageViewer` a un video reproducible.
-      async function convertGifToVideo(durationSec = 6) {
-        console.debug("convertGifToVideo start", {
-          durationSec,
-          isImageSource,
-          hasFile: !!currentFile,
-        });
-        if (!isImageSource || !currentFile) {
-          toast("No hay GIF cargado.", "error");
-          console.debug("convertGifToVideo aborted: no source");
-          return;
-        }
-        const img = document.getElementById("imageViewer");
-        const w = img.naturalWidth || 640;
-        const h = img.naturalHeight || 360;
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        // Insertar temporalmente en DOM (fuera de pantalla) para asegurar que
-        // captureStream reciba los frames en navegadores como Brave.
-        canvas.style.position = "fixed";
-        canvas.style.left = "-9999px";
-        canvas.style.top = "0";
-        canvas.style.width = w + "px";
-        canvas.style.height = h + "px";
-        canvas.setAttribute("data-temp-convert", "1");
-        document.body.appendChild(canvas);
-        const cctx = canvas.getContext("2d");
-
-        const stream = canvas.captureStream(30);
-        let mime = "video/webm;codecs=vp9";
-        if (!MediaRecorder.isTypeSupported(mime))
-          mime = "video/webm;codecs=vp8";
-        if (!MediaRecorder.isTypeSupported(mime)) mime = "video/webm";
-        if (!MediaRecorder.isTypeSupported(mime)) {
-          toast(
-            "MediaRecorder no soportado para conversión en este navegador.",
-            "error",
-          );
-          return;
-        }
-
-        let effectiveDurationSec = durationSec;
-        if (currentFile.type === "image/gif") {
-          const gifDurationMs = await getGifDurationMs(currentFile);
-          if (gifDurationMs && Number.isFinite(gifDurationMs)) {
-            effectiveDurationSec = Math.max(0.5, gifDurationMs / 1000);
-            console.debug("GIF duration calculated", {
-              gifDurationMs,
-              effectiveDurationSec,
-            });
-          } else {
-            console.debug("GIF duration unavailable, using default", {
-              effectiveDurationSec,
-            });
-          }
-        }
-
-        const rec = new MediaRecorder(stream, { type: mime });
-        const chunks = [];
-        rec.onstart = () =>
-          console.debug("MediaRecorder.start", { state: rec.state, mime });
-        rec.ondataavailable = (e) => {
-          console.debug("MediaRecorder.dataavailable", {
-            size: e.data && e.data.size,
-          });
-          chunks.push(e.data);
-        };
-        rec.onerror = (e) => {
-          console.error("MediaRecorder.error", e);
-          toast("Error durante la grabación: " + (e.message || e), "error");
-        };
-        rec.onpause = () => console.debug("MediaRecorder.pause");
-        rec.onresume = () => console.debug("MediaRecorder.resume");
-
-        const onStopPromise = new Promise((resolve) => {
-          rec.onstop = () => {
-            try {
-              console.debug("MediaRecorder.onstop", { chunks: chunks.length });
-              const blob = new Blob(chunks, { type: "video/webm" });
-              if (!blob.size) {
-                toast(
-                  "La conversión quedó vacía. El navegador no generó video.",
-                  "error",
-                );
-                console.error("Converted blob is empty");
-                resolve();
-                return;
-              }
-              if (currentVideoURL) {
-                URL.revokeObjectURL(currentVideoURL);
-                currentVideoURL = null;
-              }
-              currentVideoURL = URL.createObjectURL(blob);
-              console.debug("Created video blob", { size: blob.size });
-              video.src = currentVideoURL;
-              video.load();
-              imageViewer.style.display = "none";
-              video.style.display = "block";
-              isImageSource = false;
-              document.getElementById("playBtn").disabled = false;
-              document.getElementById("convertGifBtn").style.display = "none";
-              // Intentar reproducir automáticamente; si falla, reintentar silenciado
-              video
-                .play()
-                .then(() => {
-                  console.debug("Autoplay succeeded");
-                  toast("GIF convertido: listo para reproducir", "success");
-                })
-                .catch(async (playErr) => {
-                  console.warn("Autoplay failed:", playErr);
-                  // Intentar reproducción silenciada (algunos navegadores requieren user gesture or muted)
-                  try {
-                    const prevMuted = video.muted;
-                    video.muted = true;
-                    await video.play();
-                    console.debug("Muted autoplay succeeded");
-                    toast("Reproduciendo en silencio tras conversión", "");
-                    // restaurar mute sólo si antes no estaba silenciado
-                    setTimeout(() => {
-                      if (!prevMuted) video.muted = false;
-                    }, 700);
-                  } catch (e2) {
-                    console.error(
-                      "No se pudo reproducir incluso silenciado:",
-                      e2,
-                    );
-                    toast(
-                      "No se pudo reproducir el video convertido. Pulsa Play para intentarlo.",
-                      "error",
-                    );
-                  }
-                });
-            } catch (e) {
-              toast("Error al finalizar la conversión: " + e, "error");
-            }
-            resolve();
-          };
-        });
-
-        try {
-          // Pintar un frame inicial antes de grabar para evitar videos vacíos.
-          cctx.clearRect(0, 0, w, h);
-          cctx.drawImage(img, 0, 0, w, h);
-          await new Promise((r) => setTimeout(r, 50));
-          rec.start(250);
-
-          // Preferir ImageDecoder solo para formatos animados no-GIF.
-          // En GIF, la ruta más estable en Brave es dibujar la animación visible.
-          const useImageDecoder =
-            window.ImageDecoder && currentFile.type !== "image/gif";
-          if (useImageDecoder) {
-            try {
-              // ImageDecoder espera ArrayBuffer/ReadableStream, no un File
-              const buffer = await currentFile.arrayBuffer();
-              const mimeType = currentFile.type || "image/gif";
-              // Some implementations require the 'type' field when passing ArrayBuffer
-              const decoder = new ImageDecoder({
-                data: buffer,
-                type: mimeType,
-              });
-              let keep = true;
-              const fpsRec = 30;
-              while (keep) {
-                const result = await decoder.decode();
-                const imgBitmap = result.image;
-                cctx.clearRect(0, 0, w, h);
-                cctx.drawImage(imgBitmap, 0, 0, w, h);
-                if (imgBitmap.close) imgBitmap.close();
-                keep = !result.complete;
-                await new Promise((r) => setTimeout(r, 1000 / fpsRec));
-              }
-              // Slight delay to ensure last frames are recorded
-              await new Promise((r) => setTimeout(r, 120));
-              if (rec.state !== "inactive") rec.stop();
-            } catch (e) {
-              // Fallback to simple capture loop below
-              console.warn("ImageDecoder falló, usando fallback:", e);
-              // Fallback: usar interval a fps fijo para forzar frames en la captura
-              const fpsFallback = 20;
-              const intervalMs = Math.max(16, Math.round(1000 / fpsFallback));
-              // pequeña espera para asegurarnos que MediaRecorder haya comenzado
-              await new Promise((r) => setTimeout(r, 50));
-              const intId = setInterval(() => {
-                cctx.clearRect(0, 0, w, h);
-                cctx.drawImage(img, 0, 0, w, h);
-              }, intervalMs);
-              setTimeout(() => {
-                clearInterval(intId);
-                if (rec.state !== "inactive") rec.stop();
-              }, effectiveDurationSec * 1000);
-            }
-          } else {
-            // Fallback: grab canvas frames while the <img> animates in the page
-            const fpsFallback = 20;
-            const intervalMs = Math.max(16, Math.round(1000 / fpsFallback));
-            await new Promise((r) => setTimeout(r, 50));
-            const intId = setInterval(() => {
-              cctx.clearRect(0, 0, w, h);
-              cctx.drawImage(img, 0, 0, w, h);
-            }, intervalMs);
-            setTimeout(() => {
-              clearInterval(intId);
-              if (rec.state !== "inactive") rec.stop();
-            }, effectiveDurationSec * 1000);
-          }
-
-          await onStopPromise;
-
-          // Limpiar canvas temporal del DOM
-          try {
-            const tmp = document.querySelector('canvas[data-temp-convert="1"]');
-            if (tmp && tmp.parentNode) tmp.parentNode.removeChild(tmp);
-          } catch (__) {}
-        } catch (e) {
-          toast(
-            "No se pudo iniciar la conversión: " + (e.message || e),
-            "error",
-          );
-          try {
-            if (rec.state !== "inactive") rec.stop();
-          } catch (__) {}
-        }
-      }
-
-      function markActive(i) {
+        setMainFrameFromBlob(entry.blob);
+        capturedBlob = entry.blob;
+        lensBtn.disabled = false;
+        // Marcar activo
         document.querySelectorAll(".history-item").forEach((el, idx) => {
           el.classList.toggle("active", idx === i);
         });
+        toast("Frame " + entry.frame + " cargado desde historial", "");
       }
 
       function deleteHistoryItem(i, e) {
@@ -2091,8 +1586,6 @@
         document.getElementById("frameImg").src = "";
         document.getElementById("longPressHint").style.display = "none";
         document.getElementById("canvasPlaceholder").style.display = "block";
-        document.getElementById("gifInfo").style.display = "none";
-        document.getElementById("gifInfo").textContent = "";
         document.getElementById("speedSelect").value = "1";
         document.getElementById("playBtn").textContent = "▶ Play";
         if (currentFrameURL) {
@@ -2157,6 +1650,7 @@
         return `${m}:${sec}.${ms}`;
       }
 
+      let toastTimer;
       function toast(msg, type = "") {
         const el = document.getElementById("toast");
         el.textContent = msg;
