@@ -648,7 +648,9 @@
   let frameDuration = 1 / fps;
   let capturedBlob = null;
   let isScrubbing = false;
-  let frameHistory = []; // { dataUrl, time, frame, blob }
+  let frameHistory = [];
+  let currentVideoURL = null; // para revocar el blob cuando cambie el video
+  let seekPending = false;    // throttle de seeks para no congelar
 
   // ─── SPEED ──────────────────────────────────────────────────────
   function updateSpeed() {
@@ -673,8 +675,13 @@
   });
 
   function loadVideo(file) {
-    const url = URL.createObjectURL(file);
-    video.src = url;
+    // Revocar blob anterior para liberar memoria
+    if (currentVideoURL) {
+      URL.revokeObjectURL(currentVideoURL);
+      currentVideoURL = null;
+    }
+    currentVideoURL = URL.createObjectURL(file);
+    video.src = currentVideoURL;
     video.load();
     dropzone.style.display = 'none';
     playerSection.classList.add('visible');
@@ -703,28 +710,68 @@
     document.getElementById('playBtn').textContent = '▶ Play';
   });
 
-  // ─── SCRUBBER ───────────────────────────────────────────────────
-  scrubber.addEventListener('mousedown', () => { isScrubbing = true; });
-  scrubber.addEventListener('touchstart', () => { isScrubbing = true; });
-
-  scrubber.addEventListener('input', () => {
-    video.currentTime = scrubber.value / 1000;
-    updateInfo();
+  // Recovery: si el video se traba, intentar reanudar automáticamente
+  video.addEventListener('stalled', () => {
+    toast('⚠ Video trabado, intentando reanudar...', '');
+    setTimeout(() => {
+      if (video.paused) return;
+      const t = video.currentTime;
+      video.load();
+      video.currentTime = t;
+      video.play().catch(() => {});
+    }, 1500);
   });
 
-  scrubber.addEventListener('mouseup', () => { isScrubbing = false; });
-  scrubber.addEventListener('touchend', () => { isScrubbing = false; });
+  video.addEventListener('waiting', () => {
+    // Solo mostrar indicador visual, no hacer nada agresivo
+    document.getElementById('playBtn').textContent = '⏳';
+  });
+
+  video.addEventListener('canplay', () => {
+    document.getElementById('playBtn').textContent = video.paused ? '▶ Play' : '⏸ Pause';
+  });
+
+  video.addEventListener('error', () => {
+    toast('❌ Error en el video. Intenta recargarlo.', 'error');
+    document.getElementById('playBtn').textContent = '▶ Play';
+  });
+
+  // ─── SCRUBBER ───────────────────────────────────────────────────
+  scrubber.addEventListener('mousedown', () => { isScrubbing = true; });
+  scrubber.addEventListener('touchstart', { passive: true }, () => { isScrubbing = true; });
+
+  scrubber.addEventListener('input', () => {
+    // Throttle: no mandar seeks simultáneos al video (congela en móvil)
+    if (seekPending) return;
+    seekPending = true;
+    video.currentTime = scrubber.value / 1000;
+    updateInfo();
+    setTimeout(() => { seekPending = false; }, 80);
+  });
+
+  // Liberar isScrubbing en document para capturar mouseup/touchend fuera del slider
+  document.addEventListener('mouseup', () => { isScrubbing = false; });
+  document.addEventListener('touchend', () => { isScrubbing = false; });
+  document.addEventListener('touchcancel', () => { isScrubbing = false; });
 
   // ─── PLAYBACK ───────────────────────────────────────────────────
   function togglePlay() {
-    if (video.paused) video.play();
+    if (video.readyState < 2) return; // no hacer nada si no está listo
+    if (video.paused) video.play().catch(() => toast('No se pudo reproducir', 'error'));
     else video.pause();
   }
 
   function stepFrames(n) {
+    if (seekPending) return; // ignorar si hay seek en curso
+    seekPending = true;
     video.pause();
-    video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + n * frameDuration));
+    const next = Math.max(0, Math.min(video.duration || 0, video.currentTime + n * frameDuration));
+    video.currentTime = next;
     updateInfo();
+    // Esperar a que el seek termine antes de permitir otro
+    video.addEventListener('seeked', () => { seekPending = false; }, { once: true });
+    // Timeout de seguridad por si el evento seeked nunca llega
+    setTimeout(() => { seekPending = false; }, 500);
   }
 
   function updateFPS() {
@@ -861,9 +908,17 @@
   function resetPlayer() {
     video.pause();
     video.src = '';
+    video.load();
     video.playbackRate = 1;
+    // Liberar memoria del blob
+    if (currentVideoURL) {
+      URL.revokeObjectURL(currentVideoURL);
+      currentVideoURL = null;
+    }
     fileInput.value = '';
     capturedBlob = null;
+    seekPending = false;
+    isScrubbing = false;
     lensBtn.disabled = true;
     frameCanvas.style.display = 'none';
     document.getElementById('frameImg').style.display = 'none';
@@ -871,6 +926,7 @@
     document.getElementById('longPressHint').style.display = 'none';
     document.getElementById('canvasPlaceholder').style.display = 'block';
     document.getElementById('speedSelect').value = '1';
+    document.getElementById('playBtn').textContent = '▶ Play';
     frameHistory = [];
     renderHistory();
     playerSection.classList.remove('visible');
