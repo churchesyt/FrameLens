@@ -674,6 +674,19 @@
           >
             🔁 Convertir GIF
           </button>
+          <span
+            id="gifInfo"
+            style="
+              display: none;
+              font-size: 0.66rem;
+              color: var(--accent);
+              border: 1px solid var(--border);
+              background: var(--surface2);
+              border-radius: 999px;
+              padding: 4px 8px;
+              white-space: nowrap;
+            "
+          ></span>
         </div>
 
         <div class="capture-panel">
@@ -1026,6 +1039,8 @@
         return null;
       }
 
+      // Toast helper (declarar antes de cualquier uso)
+
       // Cargar historial al iniciar
       loadHistoryFromStorage();
 
@@ -1063,6 +1078,9 @@
 
       function loadVideo(file) {
         currentFile = file;
+        const gifInfo = document.getElementById("gifInfo");
+        gifInfo.style.display = "none";
+        gifInfo.textContent = "";
         // Revocar blob anterior para liberar memoria
         if (currentVideoURL) {
           URL.revokeObjectURL(currentVideoURL);
@@ -1081,6 +1099,19 @@
           dropzone.style.display = "none";
           playerSection.classList.add("visible");
           toast("Imagen cargada: " + file.name.slice(0, 40), "success");
+
+          if (file.type === "image/gif") {
+            getGifDurationMs(file).then((durationMs) => {
+              if (currentFile !== file || !isImageSource) return;
+              if (durationMs && Number.isFinite(durationMs)) {
+                gifInfo.textContent =
+                  "GIF: " + (durationMs / 1000).toFixed(2) + "s";
+              } else {
+                gifInfo.textContent = "GIF: duración no detectada";
+              }
+              gifInfo.style.display = "inline-flex";
+            });
+          }
           return;
         }
 
@@ -1554,6 +1585,88 @@
         });
       }
 
+      async function getGifDurationMs(file) {
+        if (!file || file.type !== "image/gif") return null;
+        try {
+          const buffer = await file.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          if (bytes.length < 13) return null;
+
+          // GIF87a / GIF89a
+          const isGif =
+            bytes[0] === 0x47 &&
+            bytes[1] === 0x49 &&
+            bytes[2] === 0x46 &&
+            bytes[3] === 0x38 &&
+            (bytes[4] === 0x39 || bytes[4] === 0x37) &&
+            bytes[5] === 0x61;
+          if (!isGif) return null;
+
+          let offset = 13;
+          if (bytes[10] & 0x80) {
+            const gctSize = 3 * (1 << ((bytes[10] & 0x07) + 1));
+            offset += gctSize;
+          }
+
+          let totalMs = 0;
+          let pendingDelayCs = 0;
+
+          while (offset < bytes.length) {
+            const blockId = bytes[offset++];
+            if (blockId === 0x3b) break; // trailer
+
+            if (blockId === 0x21) {
+              const label = bytes[offset++];
+              if (label === 0xf9) {
+                const blockSize = bytes[offset++];
+                if (blockSize === 4) {
+                  offset += 1; // packed
+                  const delay = bytes[offset] | (bytes[offset + 1] << 8);
+                  pendingDelayCs = delay || 1;
+                  offset += 2;
+                  offset += 1; // transparent color index
+                  offset += 1; // block terminator
+                } else {
+                  offset += blockSize;
+                }
+              } else {
+                while (offset < bytes.length) {
+                  const size = bytes[offset++];
+                  if (size === 0) break;
+                  offset += size;
+                }
+              }
+              continue;
+            }
+
+            if (blockId === 0x2c) {
+              offset += 8; // image descriptor
+              const packed = bytes[offset++];
+              if (packed & 0x80) {
+                const lctSize = 3 * (1 << ((packed & 0x07) + 1));
+                offset += lctSize;
+              }
+              offset += 1; // LZW min code size
+              while (offset < bytes.length) {
+                const size = bytes[offset++];
+                if (size === 0) break;
+                offset += size;
+              }
+              totalMs += Math.max(10, pendingDelayCs * 10);
+              pendingDelayCs = 0;
+              continue;
+            }
+
+            break;
+          }
+
+          return totalMs > 0 ? totalMs : null;
+        } catch (e) {
+          console.warn("No se pudo calcular la duración real del GIF:", e);
+          return null;
+        }
+      }
+
       function openLensForEntry(i) {
         const entry = frameHistory[i];
         if (!entry) {
@@ -1664,8 +1777,14 @@
 
       // Convierte un GIF/APNG animado visualizado en `imageViewer` a un video reproducible.
       async function convertGifToVideo(durationSec = 6) {
+        console.debug("convertGifToVideo start", {
+          durationSec,
+          isImageSource,
+          hasFile: !!currentFile,
+        });
         if (!isImageSource || !currentFile) {
           toast("No hay GIF cargado.", "error");
+          console.debug("convertGifToVideo aborted: no source");
           return;
         }
         const img = document.getElementById("imageViewer");
@@ -1698,21 +1817,50 @@
           return;
         }
 
+        let effectiveDurationSec = durationSec;
+        if (currentFile.type === "image/gif") {
+          const gifDurationMs = await getGifDurationMs(currentFile);
+          if (gifDurationMs && Number.isFinite(gifDurationMs)) {
+            effectiveDurationSec = Math.max(0.5, gifDurationMs / 1000);
+            console.debug("GIF duration calculated", {
+              gifDurationMs,
+              effectiveDurationSec,
+            });
+          } else {
+            console.debug("GIF duration unavailable, using default", {
+              effectiveDurationSec,
+            });
+          }
+        }
+
         const rec = new MediaRecorder(stream, { type: mime });
         const chunks = [];
-        rec.ondataavailable = (e) => chunks.push(e.data);
-        rec.onerror = (e) =>
-          toast("Error durante la grabación: " + e.message, "error");
+        rec.onstart = () =>
+          console.debug("MediaRecorder.start", { state: rec.state, mime });
+        rec.ondataavailable = (e) => {
+          console.debug("MediaRecorder.dataavailable", {
+            size: e.data && e.data.size,
+          });
+          chunks.push(e.data);
+        };
+        rec.onerror = (e) => {
+          console.error("MediaRecorder.error", e);
+          toast("Error durante la grabación: " + (e.message || e), "error");
+        };
+        rec.onpause = () => console.debug("MediaRecorder.pause");
+        rec.onresume = () => console.debug("MediaRecorder.resume");
 
         const onStopPromise = new Promise((resolve) => {
           rec.onstop = () => {
             try {
+              console.debug("MediaRecorder.onstop", { chunks: chunks.length });
               const blob = new Blob(chunks, { type: "video/webm" });
               if (currentVideoURL) {
                 URL.revokeObjectURL(currentVideoURL);
                 currentVideoURL = null;
               }
               currentVideoURL = URL.createObjectURL(blob);
+              console.debug("Created video blob", { size: blob.size });
               video.src = currentVideoURL;
               video.load();
               imageViewer.style.display = "none";
@@ -1724,15 +1872,17 @@
               video
                 .play()
                 .then(() => {
+                  console.debug("Autoplay succeeded");
                   toast("GIF convertido: listo para reproducir", "success");
                 })
                 .catch(async (playErr) => {
-                  console.warn("Reproducción automática falló:", playErr);
+                  console.warn("Autoplay failed:", playErr);
                   // Intentar reproducción silenciada (algunos navegadores requieren user gesture or muted)
                   try {
                     const prevMuted = video.muted;
                     video.muted = true;
                     await video.play();
+                    console.debug("Muted autoplay succeeded");
                     toast("Reproduciendo en silencio tras conversión", "");
                     // restaurar mute sólo si antes no estaba silenciado
                     setTimeout(() => {
@@ -1799,7 +1949,7 @@
               setTimeout(() => {
                 clearInterval(intId);
                 if (rec.state !== "inactive") rec.stop();
-              }, durationSec * 1000);
+              }, effectiveDurationSec * 1000);
             }
           } else {
             // Fallback: grab canvas frames while the <img> animates in the page
@@ -1813,7 +1963,7 @@
             setTimeout(() => {
               clearInterval(intId);
               if (rec.state !== "inactive") rec.stop();
-            }, durationSec * 1000);
+            }, effectiveDurationSec * 1000);
           }
 
           await onStopPromise;
@@ -1925,6 +2075,8 @@
         document.getElementById("frameImg").src = "";
         document.getElementById("longPressHint").style.display = "none";
         document.getElementById("canvasPlaceholder").style.display = "block";
+        document.getElementById("gifInfo").style.display = "none";
+        document.getElementById("gifInfo").textContent = "";
         document.getElementById("speedSelect").value = "1";
         document.getElementById("playBtn").textContent = "▶ Play";
         if (currentFrameURL) {
