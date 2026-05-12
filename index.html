@@ -914,6 +914,8 @@
       let isRecoveringVideo = false;
       const MAX_HISTORY_ITEMS = 50;
       const HISTORY_PREVIEW_WIDTH = 320;
+      const TRANSPARENT_PIXEL =
+        "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
 
       // ─── STORAGE ────────────────────────────────────────────────────
       const STORAGE_KEY = "framelens_history";
@@ -921,8 +923,10 @@
 
       function saveHistoryToStorage() {
         try {
+          // Guardar solo metadatos (tiempo y número de frame).
+          // No persistimos la miniatura (previewUrl) para evitar cargar
+          // grandes data URLs en localStorage que congelan la página.
           const toSave = frameHistory.map((entry) => ({
-            previewUrl: entry.previewUrl,
             time: entry.time,
             frame: entry.frame,
           }));
@@ -938,8 +942,10 @@
           if (saved) {
             const parsed = JSON.parse(saved);
             if (Array.isArray(parsed)) {
+              // Restaurar solo metadatos. Las miniaturas se generan bajo demanda
+              // (requieren el video cargado) para evitar consumir memoria.
               frameHistory = parsed.map((item) => ({
-                previewUrl: item.previewUrl,
+                previewUrl: null,
                 time: item.time,
                 frame: item.frame,
                 blob: null,
@@ -1314,9 +1320,10 @@
           if (selectionMode)
             checkboxHtml = `<input type="checkbox" class="h-check" data-idx="${idx}" onchange="toggleItemSelection(${idx}, this.checked)" ${selectedItems.has(idx) ? "checked" : ""} />`;
 
+          const imgSrc = entry.previewUrl || TRANSPARENT_PIXEL;
           item.innerHTML = `
         ${checkboxHtml}
-        <img src="${entry.previewUrl}" alt="frame ${entry.frame}" draggable="true">
+        <img src="${imgSrc}" alt="frame ${entry.frame}" draggable="true">
         <div class="h-meta">f${entry.frame} · ${entry.time.toFixed(2)}s</div>
         <div style="display:flex;gap:6px;align-items:center">
           <button class="btn" style="font-size:0.7rem;padding:4px 8px;" onmouseover="this.dataset.idx = '${idx}';" onclick="openLensForEntry(parseInt(this.dataset.idx))">Buscar</button>
@@ -1372,6 +1379,61 @@
       }
 
       // Abrir Lens para una entrada específica
+      function captureFrameAtTime(targetTime) {
+        return new Promise((resolve, reject) => {
+          if (!video.src) {
+            reject("No hay video cargado");
+            return;
+          }
+
+          // Buscar al tiempo
+          video.currentTime = targetTime;
+
+          // Esperar el evento 'seeked' (máx 3 segundos)
+          let timeoutId;
+          const onSeeked = () => {
+            video.removeEventListener("seeked", onSeeked);
+            clearTimeout(timeoutId);
+
+            // Capturar frame
+            const scale = 2;
+            const tempCanvas = document.createElement("canvas");
+            tempCanvas.width = (video.videoWidth || 640) * scale;
+            tempCanvas.height = (video.videoHeight || 360) * scale;
+            const tempCtx = tempCanvas.getContext("2d");
+            tempCtx.save();
+            tempCtx.scale(scale, scale);
+            tempCtx.drawImage(
+              video,
+              0,
+              0,
+              video.videoWidth || 640,
+              video.videoHeight || 360,
+            );
+            tempCtx.restore();
+
+            tempCanvas.toBlob(
+              (blob) => {
+                if (blob) {
+                  resolve(blob);
+                } else {
+                  reject("No se pudo capturar el frame");
+                }
+              },
+              "image/png",
+              1,
+            );
+          };
+
+          timeoutId = setTimeout(() => {
+            video.removeEventListener("seeked", onSeeked);
+            reject("Timeout buscando frame");
+          }, 3000);
+
+          video.addEventListener("seeked", onSeeked);
+        });
+      }
+
       function openLensForEntry(i) {
         const entry = frameHistory[i];
         if (!entry) {
@@ -1379,51 +1441,52 @@
           return;
         }
 
-        // Si el blob no existe (restaurado del historial), usar previewUrl como fallback
-        if (!entry.blob) {
-          if (entry.previewUrl) {
-            // Convertir data URL a blob para compartir
-            fetch(entry.previewUrl)
-              .then((res) => res.blob())
-              .then((blob) => {
-                const file = new File([blob], "frame_" + entry.frame + ".png", {
-                  type: "image/png",
-                });
-                if (navigator.share) {
-                  navigator
-                    .share({
-                      files: [file],
-                      title: "Frame " + entry.frame,
-                    })
-                    .catch(() => {});
-                  toast("🔍 Compartiendo frame " + entry.frame, "success");
-                } else {
-                  toast("Share no disponible en este navegador", "error");
-                }
+        // Si el blob existe, usar directamente
+        if (entry.blob) {
+          const file = new File([entry.blob], "frame_" + entry.frame + ".png", {
+            type: "image/png",
+          });
+          if (navigator.share) {
+            navigator
+              .share({
+                files: [file],
+                title: "Frame " + entry.frame,
               })
-              .catch((e) => {
-                toast("Error al preparar imagen: " + e.message, "error");
-              });
-            return;
+              .catch(() => {});
+            toast("🔍 Compartiendo frame " + entry.frame, "success");
+          } else {
+            toast("Share no disponible en este navegador", "error");
           }
-          toast("No hay datos para este frame", "error");
           return;
         }
 
-        const file = new File([entry.blob], "frame_" + entry.frame + ".png", {
-          type: "image/png",
-        });
-        if (navigator.share) {
-          navigator
-            .share({
-              files: [file],
-              title: "Frame " + entry.frame,
-            })
-            .catch(() => {});
-          toast("🔍 Compartiendo frame " + entry.frame, "success");
-        } else {
-          toast("Share no disponible en este navegador", "error");
+        // Si blob no existe (restaurado), capturar del video
+        if (!video.src) {
+          toast("Carga el video para buscar frames del historial", "error");
+          return;
         }
+
+        toast("⏳ Buscando frame " + entry.frame + "...", "");
+        captureFrameAtTime(entry.time)
+          .then((blob) => {
+            const file = new File([blob], "frame_" + entry.frame + ".png", {
+              type: "image/png",
+            });
+            if (navigator.share) {
+              navigator
+                .share({
+                  files: [file],
+                  title: "Frame " + entry.frame,
+                })
+                .catch(() => {});
+              toast("🔍 Compartiendo frame " + entry.frame, "success");
+            } else {
+              toast("Share no disponible en este navegador", "error");
+            }
+          })
+          .catch((e) => {
+            toast("Error: " + e, "error");
+          });
       }
 
       function loadHistoryItem(i) {
