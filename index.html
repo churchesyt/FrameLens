@@ -950,6 +950,8 @@
       let fps = 30;
       let frameDuration = 1 / fps;
       let capturedBlob = null;
+      let isImageSource = false;
+      let currentFile = null;
       let isScrubbing = false;
       let frameHistory = [];
       let currentVideoURL = null; // para revocar el blob cuando cambie el video
@@ -1046,8 +1048,13 @@
         e.preventDefault();
         dropzone.classList.remove("drag-over");
         const file = e.dataTransfer.files[0];
-        if (file && file.type.startsWith("video/")) loadVideo(file);
-        else toast("Archivo no válido. Sube un video.", "error");
+        if (!file) return;
+        // Aceptar video o imágenes animadas
+        if (file.type.startsWith("video/") || file.type.startsWith("image/")) {
+          loadVideo(file);
+        } else {
+          toast("Archivo no válido. Sube un video o GIF.", "error");
+        }
       });
 
       fileInput.addEventListener("change", () => {
@@ -1055,6 +1062,7 @@
       });
 
       function loadVideo(file) {
+        currentFile = file;
         // Revocar blob anterior para liberar memoria
         if (currentVideoURL) {
           URL.revokeObjectURL(currentVideoURL);
@@ -1655,8 +1663,8 @@
       }
 
       // Convierte un GIF/APNG animado visualizado en `imageViewer` a un video reproducible.
-      function convertGifToVideo(durationSec = 6) {
-        if (!isImageSource) {
+      async function convertGifToVideo(durationSec = 6) {
+        if (!isImageSource || !currentFile) {
           toast("No hay GIF cargado.", "error");
           return;
         }
@@ -1686,48 +1694,96 @@
         rec.ondataavailable = (e) => chunks.push(e.data);
         rec.onerror = (e) =>
           toast("Error durante la grabación: " + e.message, "error");
-        rec.onstop = () => {
-          try {
-            const blob = new Blob(chunks, { type: "video/webm" });
-            if (currentVideoURL) {
-              URL.revokeObjectURL(currentVideoURL);
-              currentVideoURL = null;
-            }
-            currentVideoURL = URL.createObjectURL(blob);
-            video.src = currentVideoURL;
-            video.load();
-            imageViewer.style.display = "none";
-            video.style.display = "block";
-            isImageSource = false;
-            document.getElementById("playBtn").disabled = false;
-            document.getElementById("convertGifBtn").style.display = "none";
-            toast(
-              "GIF convertido a video — ahora puedes pausar y avanzar frames",
-              "success",
-            );
-          } catch (e) {
-            toast("Error al finalizar la conversión: " + e, "error");
-          }
-        };
 
-        let running = true;
-        function draw() {
-          if (!running) return;
-          cctx.clearRect(0, 0, w, h);
-          cctx.drawImage(img, 0, 0, w, h);
-          requestAnimationFrame(draw);
-        }
+        const onStopPromise = new Promise((resolve) => {
+          rec.onstop = () => {
+            try {
+              const blob = new Blob(chunks, { type: "video/webm" });
+              if (currentVideoURL) {
+                URL.revokeObjectURL(currentVideoURL);
+                currentVideoURL = null;
+              }
+              currentVideoURL = URL.createObjectURL(blob);
+              video.src = currentVideoURL;
+              video.load();
+              imageViewer.style.display = "none";
+              video.style.display = "block";
+              isImageSource = false;
+              document.getElementById("playBtn").disabled = false;
+              document.getElementById("convertGifBtn").style.display = "none";
+              toast(
+                "GIF convertido a video — ahora puedes pausar y avanzar frames",
+                "success",
+              );
+            } catch (e) {
+              toast("Error al finalizar la conversión: " + e, "error");
+            }
+            resolve();
+          };
+        });
 
         try {
           rec.start();
-          draw();
-          toast("Convirtiendo GIF a video... espera " + durationSec + "s", "");
-          setTimeout(() => {
-            running = false;
-            if (rec.state !== "inactive") rec.stop();
-          }, durationSec * 1000);
+
+          // Preferir ImageDecoder (si está disponible) para extraer frames reales.
+          if (window.ImageDecoder) {
+            try {
+              const decoder = new ImageDecoder({ data: currentFile });
+              let keep = true;
+              const fpsRec = 30;
+              while (keep) {
+                const result = await decoder.decode();
+                const imgBitmap = result.image;
+                cctx.clearRect(0, 0, w, h);
+                cctx.drawImage(imgBitmap, 0, 0, w, h);
+                if (imgBitmap.close) imgBitmap.close();
+                keep = !result.complete;
+                await new Promise((r) => setTimeout(r, 1000 / fpsRec));
+              }
+              // Slight delay to ensure last frames are recorded
+              await new Promise((r) => setTimeout(r, 120));
+              if (rec.state !== "inactive") rec.stop();
+            } catch (e) {
+              // Fallback to simple capture loop below
+              console.warn("ImageDecoder falló, usando fallback:", e);
+              let running = true;
+              function draw() {
+                if (!running) return;
+                cctx.clearRect(0, 0, w, h);
+                cctx.drawImage(img, 0, 0, w, h);
+                requestAnimationFrame(draw);
+              }
+              draw();
+              setTimeout(() => {
+                running = false;
+                if (rec.state !== "inactive") rec.stop();
+              }, durationSec * 1000);
+            }
+          } else {
+            // Fallback: grab canvas frames while the <img> animates in the page
+            let running = true;
+            function draw() {
+              if (!running) return;
+              cctx.clearRect(0, 0, w, h);
+              cctx.drawImage(img, 0, 0, w, h);
+              requestAnimationFrame(draw);
+            }
+            draw();
+            setTimeout(() => {
+              running = false;
+              if (rec.state !== "inactive") rec.stop();
+            }, durationSec * 1000);
+          }
+
+          await onStopPromise;
         } catch (e) {
-          toast("No se pudo iniciar la conversión: " + e.message, "error");
+          toast(
+            "No se pudo iniciar la conversión: " + (e.message || e),
+            "error",
+          );
+          try {
+            if (rec.state !== "inactive") rec.stop();
+          } catch (__) {}
         }
       }
 
