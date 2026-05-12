@@ -1720,10 +1720,35 @@
               isImageSource = false;
               document.getElementById("playBtn").disabled = false;
               document.getElementById("convertGifBtn").style.display = "none";
-              toast(
-                "GIF convertido a video — ahora puedes pausar y avanzar frames",
-                "success",
-              );
+              // Intentar reproducir automáticamente; si falla, reintentar silenciado
+              video
+                .play()
+                .then(() => {
+                  toast("GIF convertido: listo para reproducir", "success");
+                })
+                .catch(async (playErr) => {
+                  console.warn("Reproducción automática falló:", playErr);
+                  // Intentar reproducción silenciada (algunos navegadores requieren user gesture or muted)
+                  try {
+                    const prevMuted = video.muted;
+                    video.muted = true;
+                    await video.play();
+                    toast("Reproduciendo en silencio tras conversión", "");
+                    // restaurar mute sólo si antes no estaba silenciado
+                    setTimeout(() => {
+                      if (!prevMuted) video.muted = false;
+                    }, 700);
+                  } catch (e2) {
+                    console.error(
+                      "No se pudo reproducir incluso silenciado:",
+                      e2,
+                    );
+                    toast(
+                      "No se pudo reproducir el video convertido. Pulsa Play para intentarlo.",
+                      "error",
+                    );
+                  }
+                });
             } catch (e) {
               toast("Error al finalizar la conversión: " + e, "error");
             }
