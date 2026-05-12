@@ -1013,9 +1013,8 @@
                 blob: null,
               }));
               renderHistory();
-              toast(
-                "✅ Historial restaurado (" + frameHistory.length + ")",
-                "",
+              console.info(
+                "Historial restaurado (" + frameHistory.length + ")",
               );
               return true;
             }
@@ -1923,8 +1922,11 @@
           await new Promise((r) => setTimeout(r, 50));
           rec.start(250);
 
-          // Preferir ImageDecoder (si está disponible) para extraer frames reales.
-          if (window.ImageDecoder) {
+          // Preferir ImageDecoder solo para formatos animados no-GIF.
+          // En GIF, la ruta más estable en Brave es dibujar la animación visible.
+          const useImageDecoder =
+            window.ImageDecoder && currentFile.type !== "image/gif";
+          if (useImageDecoder) {
             try {
               // ImageDecoder espera ArrayBuffer/ReadableStream, no un File
               const buffer = await currentFile.arrayBuffer();
