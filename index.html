@@ -274,12 +274,16 @@
         display: flex;
         align-items: center;
         gap: 10px;
+        flex-wrap: nowrap;
       }
 
       .time-badge {
         font-size: 0.7rem;
         color: var(--accent);
-        min-width: 80px;
+        width: 9ch;
+        flex: 0 0 9ch;
+        font-variant-numeric: tabular-nums;
+        text-align: left;
         white-space: nowrap;
       }
 
@@ -313,8 +317,11 @@
       .duration-badge {
         font-size: 0.7rem;
         color: var(--muted);
-        min-width: 60px;
+        width: 6ch;
+        flex: 0 0 6ch;
+        font-variant-numeric: tabular-nums;
         text-align: right;
+        white-space: nowrap;
       }
 
       /* BUTTON ROW */
@@ -579,6 +586,188 @@
 
       .history-item:hover .h-del {
         opacity: 1;
+      }
+
+      /* RESPONSIVE */
+      @media (max-width: 768px) {
+        body {
+          padding: 8px;
+          gap: 8px;
+        }
+
+        .header,
+        #dropzone,
+        #playerSection,
+        #historySection {
+          max-width: 100%;
+        }
+
+        .header {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 6px;
+        }
+
+        #dropzone {
+          height: 190px;
+          border-radius: 14px;
+        }
+
+        .media-row,
+        .capture-panel,
+        .btn-row,
+        .frame-info,
+        .scrubber-row {
+          width: 100%;
+        }
+
+        .capture-panel {
+          flex-direction: column;
+        }
+
+        .canvas-wrap {
+          width: 100%;
+          max-width: 320px;
+        }
+
+        .capture-actions {
+          width: 100%;
+        }
+
+        .btn-row {
+          gap: 6px;
+        }
+
+        .btn {
+          padding: 6px 10px;
+          font-size: 0.68rem;
+        }
+
+        .btn-row .sep {
+          display: none;
+        }
+
+        .btn-row label {
+          width: 100%;
+          justify-content: space-between;
+        }
+
+        .scrubber-row {
+          gap: 8px;
+        }
+
+        .time-badge,
+        .duration-badge {
+          width: auto;
+          flex: 0 0 auto;
+          min-width: 0;
+          font-size: 0.64rem;
+        }
+
+        .frame-info {
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+
+        .kbd-hint {
+          width: 100%;
+          gap: 8px;
+        }
+
+        .lens-note {
+          width: 100%;
+        }
+
+        #historyGrid {
+          grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+        }
+
+        #historySection > div:first-child {
+          flex-direction: column;
+          align-items: stretch !important;
+          gap: 10px !important;
+        }
+
+        #historySection input[type="search"] {
+          width: 100%;
+        }
+
+        #historySection button {
+          flex: 1;
+        }
+
+        #toast {
+          left: 8px;
+          right: 8px;
+          max-width: none;
+          bottom: 8px;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .logo {
+          font-size: 1.2rem;
+        }
+
+        .badge {
+          font-size: 0.55rem;
+        }
+
+        #dropzone {
+          height: 170px;
+        }
+
+        .drop-icon {
+          width: 48px;
+          height: 48px;
+          font-size: 1.35rem;
+        }
+
+        .drop-title {
+          font-size: 0.95rem;
+          text-align: center;
+        }
+
+        .drop-sub {
+          text-align: center;
+          padding: 0 12px;
+        }
+
+        #video {
+          max-height: 34vh;
+        }
+
+        .controls {
+          padding: 8px 10px;
+        }
+
+        .btn-row {
+          gap: 5px;
+        }
+
+        .btn {
+          padding: 6px 8px;
+          border-radius: 7px;
+        }
+
+        .time-badge,
+        .duration-badge {
+          font-size: 0.6rem;
+        }
+
+        .frame-info {
+          font-size: 0.62rem;
+        }
+
+        #historyGrid {
+          grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+          gap: 6px;
+        }
+
+        .history-item .h-meta {
+          font-size: 0.52rem;
+          padding: 2px 4px;
+        }
       }
     </style>
   </head>
