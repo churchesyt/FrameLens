@@ -816,215 +816,190 @@
           ></video>
         </div>
 
-        <!-- MINI CONTROLS (compact, debajo del video) -->
-        <div
-          class="mini-controls"
-          style="
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            margin: 8px 0 0 0;
-          "
-        >
-          <button class="btn" onclick="stepFrames(-1)" title="-1 frame">
-            ◀
-          </button>
-          <button
-            class="btn primary"
-            id="playBtnMini"
-            onclick="togglePlayMini()"
-          >
-            ▶
-          </button>
-          <button class="btn" onclick="stepFrames(1)" title="+1 frame">
-            ▶
-          </button>
-          <button class="btn" onclick="captureFrame()" title="Capturar">
-            📷
-          </button>
-        </div>
+        <div class="controls">
+          <!-- SCRUBBER -->
+          <div class="scrubber-row">
+            <div class="time-badge" id="currentTime">0:00.000</div>
+            <input
+              type="range"
+              class="scrubber"
+              id="scrubber"
+              min="0"
+              max="1000"
+              value="0"
+              step="1"
+            />
+            <div class="duration-badge" id="duration">0:00</div>
+          </div>
 
-        <div class="capture-panel">
-          <!-- Thumbnail: IMG real para que long-press abra menú nativo de Lens -->
-          <div>
-            <div class="panel-label">Frame capturado</div>
-            <div class="canvas-wrap">
-              <div class="canvas-placeholder" id="canvasPlaceholder">
-                Captura<br />un frame
-              </div>
-              <canvas id="frameCanvas" style="display: none"></canvas>
-              <img
-                id="frameImg"
-                style="
-                  display: none;
-                  width: 100%;
-                  height: 100%;
-                  object-fit: contain;
-                  border-radius: 8px;
-                "
-                alt="frame capturado"
-                draggable="true"
-              />
-            </div>
-            <div
-              id="longPressHint"
+          <!-- BUTTONS -->
+          <div class="btn-row">
+            <button class="btn" onclick="stepFrames(-10)" title="-10 frames">
+              ⏮ -10f
+            </button>
+            <button class="btn" onclick="stepFrames(-1)" title="-1 frame">
+              ◀ -1f
+            </button>
+            <button class="btn primary" id="playBtn" onclick="togglePlay()">
+              ▶ Play
+            </button>
+            <button class="btn" onclick="stepFrames(1)" title="+1 frame">
+              +1f ▶
+            </button>
+            <button class="btn" onclick="stepFrames(10)" title="+10 frames">
+              +10f ⏭
+            </button>
+
+            <div class="sep"></div>
+
+            <label
               style="
-                display: none;
-                font-size: 0.58rem;
+                font-size: 0.7rem;
                 color: var(--muted);
-                text-align: center;
-                margin-top: 4px;
+                display: flex;
+                align-items: center;
+                gap: 6px;
               "
             >
-              mantén presionada ☝️ para Lens
-            </div>
+              Vel:
+              <select
+                class="fps-select"
+                id="speedSelect"
+                onchange="updateSpeed()"
+              >
+                <option value="0.1">0.1x</option>
+                <option value="0.25">0.25x</option>
+                <option value="0.5">0.5x</option>
+                <option value="1" selected>1x</option>
+                <option value="1.5">1.5x</option>
+                <option value="2">2x</option>
+              </select>
+            </label>
+
+            <label
+              style="
+                font-size: 0.7rem;
+                color: var(--muted);
+                display: flex;
+                align-items: center;
+                gap: 6px;
+              "
+            >
+              FPS:
+              <select class="fps-select" id="fpsSelect" onchange="updateFPS()">
+                <option value="24">24</option>
+                <option value="25">25</option>
+                <option value="30" selected>30</option>
+                <option value="50">50</option>
+                <option value="60">60</option>
+              </select>
+            </label>
+
+            <button class="btn danger" onclick="resetPlayer()">
+              ✕ Cambiar
+            </button>
           </div>
-          <!-- Actions -->
-          <div class="capture-actions">
-            <button
-              class="btn primary"
-              onclick="captureFrame()"
-              style="justify-content: center"
-            >
-              📷 Capturar Frame
-            </button>
-            <button
-              class="btn lens"
-              id="lensBtn"
-              onclick="openLens()"
-              disabled
-              style="justify-content: center"
-            >
-              🔍 Abrir Lens
-            </button>
-            <div class="lens-note">
-              <strong>Long press</strong> sobre la imagen → "Buscar con Google
-              Lens" · o ábrela directo desde el navegador.
-              <strong>[C]</strong> captura
+
+          <!-- FRAME INFO -->
+          <div class="frame-info">
+            <div class="info-item">
+              Frame: <span class="info-val" id="frameNum">—</span>
+            </div>
+            <div class="info-item">
+              Tiempo: <span class="info-val" id="exactTime">—</span>
+            </div>
+            <div class="info-item">
+              FPS: <span class="info-val" id="fpsInfo">30</span>
+            </div>
+            <div class="sep"></div>
+            <div class="kbd-hint">
+              <span
+                ><span class="kbd">←</span
+                ><span class="kbd">→</span> frame</span
+              >
+              <span><span class="kbd">Space</span> play/pause</span>
+              <span><span class="kbd">C</span> capturar</span>
+              <span><span class="kbd">L</span> Lens</span>
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- LENS LINK BANNER -->
-        <a
-          id="lensLink"
-          href="https://lens.google.com/"
-          target="_blank"
-          rel="noopener"
-          style="display: none"
+      <div class="capture-panel">
+        <!-- Thumbnail: IMG real para que long-press abra menú nativo de Lens -->
+        <div>
+          <div class="panel-label">Frame capturado</div>
+          <div class="canvas-wrap">
+            <div class="canvas-placeholder" id="canvasPlaceholder">
+              Captura<br />un frame
+            </div>
+            <canvas id="frameCanvas" style="display: none"></canvas>
+            <img
+              id="frameImg"
+              style="
+                display: none;
+                width: 100%;
+                height: 100%;
+                object-fit: contain;
+                border-radius: 8px;
+              "
+              alt="frame capturado"
+              draggable="true"
+            />
+          </div>
+          <div
+            id="longPressHint"
+            style="
+              display: none;
+              font-size: 0.58rem;
+              color: var(--muted);
+              text-align: center;
+              margin-top: 4px;
+            "
+          >
+            mantén presionada ☝️ para Lens
+          </div>
+        </div>
+        <!-- Actions -->
+        <div class="capture-actions">
+          <button
+            class="btn primary"
+            onclick="captureFrame()"
+            style="justify-content: center"
+          >
+            📷 Capturar Frame
+          </button>
+          <button
+            class="btn lens"
+            id="lensBtn"
+            onclick="openLens()"
+            disabled
+            style="justify-content: center"
+          >
+            🔍 Abrir Lens
+          </button>
+          <div class="lens-note">
+            <strong>Long press</strong> sobre la imagen → "Buscar con Google
+            Lens" · o ábrela directo desde el navegador.
+            <strong>[C]</strong> captura
+          </div>
+        </div>
+      </div>
+
+      <!-- LENS LINK BANNER -->
+      <a
+        id="lensLink"
+        href="https://lens.google.com/"
+        target="_blank"
+        rel="noopener"
+        style="display: none"
+      >
+        <span>🔍</span>
+        <span
+          >Abrir Google Lens &rarr; si no abre la app, caerá a la versión
+          web</span
         >
-          <span>🔍</span>
-          <span
-            >Abrir Google Lens &rarr; si no abre la app, caerá a la versión
-            web</span
-          >
-        </a>
-      </div>
-
-      <div class="controls">
-        <!-- SCRUBBER -->
-        <div class="scrubber-row">
-          <div class="time-badge" id="currentTime">0:00.000</div>
-          <input
-            type="range"
-            class="scrubber"
-            id="scrubber"
-            min="0"
-            max="1000"
-            value="0"
-            step="1"
-          />
-          <div class="duration-badge" id="duration">0:00</div>
-        </div>
-
-        <!-- BUTTONS -->
-        <div class="btn-row">
-          <button class="btn" onclick="stepFrames(-10)" title="-10 frames">
-            ⏮ -10f
-          </button>
-          <button class="btn" onclick="stepFrames(-1)" title="-1 frame">
-            ◀ -1f
-          </button>
-          <button class="btn primary" id="playBtn" onclick="togglePlay()">
-            ▶ Play
-          </button>
-          <button class="btn" onclick="stepFrames(1)" title="+1 frame">
-            +1f ▶
-          </button>
-          <button class="btn" onclick="stepFrames(10)" title="+10 frames">
-            +10f ⏭
-          </button>
-
-          <div class="sep"></div>
-
-          <label
-            style="
-              font-size: 0.7rem;
-              color: var(--muted);
-              display: flex;
-              align-items: center;
-              gap: 6px;
-            "
-          >
-            Vel:
-            <select
-              class="fps-select"
-              id="speedSelect"
-              onchange="updateSpeed()"
-            >
-              <option value="0.1">0.1x</option>
-              <option value="0.25">0.25x</option>
-              <option value="0.5">0.5x</option>
-              <option value="1" selected>1x</option>
-              <option value="1.5">1.5x</option>
-              <option value="2">2x</option>
-            </select>
-          </label>
-
-          <label
-            style="
-              font-size: 0.7rem;
-              color: var(--muted);
-              display: flex;
-              align-items: center;
-              gap: 6px;
-            "
-          >
-            FPS:
-            <select class="fps-select" id="fpsSelect" onchange="updateFPS()">
-              <option value="24">24</option>
-              <option value="25">25</option>
-              <option value="30" selected>30</option>
-              <option value="50">50</option>
-              <option value="60">60</option>
-            </select>
-          </label>
-
-          <button class="btn danger" onclick="resetPlayer()">✕ Cambiar</button>
-        </div>
-
-        <!-- FRAME INFO -->
-        <div class="frame-info">
-          <div class="info-item">
-            Frame: <span class="info-val" id="frameNum">—</span>
-          </div>
-          <div class="info-item">
-            Tiempo: <span class="info-val" id="exactTime">—</span>
-          </div>
-          <div class="info-item">
-            FPS: <span class="info-val" id="fpsInfo">30</span>
-          </div>
-          <div class="sep"></div>
-          <div class="kbd-hint">
-            <span
-              ><span class="kbd">←</span><span class="kbd">→</span> frame</span
-            >
-            <span><span class="kbd">Space</span> play/pause</span>
-            <span><span class="kbd">C</span> capturar</span>
-            <span><span class="kbd">L</span> Lens</span>
-          </div>
-        </div>
-      </div>
+      </a>
     </div>
 
     <!-- HISTORIAL DE FRAMES -->
