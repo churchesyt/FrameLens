@@ -1101,6 +1101,11 @@
       let seekRecoveryTimer = null;
       let isRecoveringVideo = false;
       let pendingPlayOnReady = false;
+      let shouldKeepPlaying = false;
+      let pauseByCodeUntil = 0;
+      let lastProgressTime = 0;
+      let lastProgressAt = 0;
+      let playbackWatchdogTimer = null;
       let lastRecoveryAt = 0;
       const isLikelyMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(
         navigator.userAgent,
@@ -1225,6 +1230,10 @@
         lastSavedSecond = -1;
         lastUiUpdateAt = 0;
         lastUIState.scrubberBg = "";
+        shouldKeepPlaying = false;
+        pauseByCodeUntil = 0;
+        lastProgressTime = 0;
+        lastProgressAt = 0;
         currentVideoURL = URL.createObjectURL(file);
         video.src = currentVideoURL;
         video.load();
@@ -1239,6 +1248,8 @@
         document.getElementById("duration").textContent = formatTime(
           video.duration,
         );
+        lastProgressTime = video.currentTime || 0;
+        lastProgressAt = Date.now();
         updateInfo();
       });
 
@@ -1256,20 +1267,43 @@
             lastSavedSecond = sec;
             saveLastTime(video.currentTime);
           }
+
+          if (Math.abs(video.currentTime - lastProgressTime) > 0.03) {
+            lastProgressTime = video.currentTime;
+            lastProgressAt = Date.now();
+          }
         }
       });
 
       video.addEventListener("play", () => {
         setPlayText("⏸ Pause");
+        shouldKeepPlaying = true;
+        lastProgressAt = Date.now();
+        startPlaybackWatchdog();
       });
 
       video.addEventListener("pause", () => {
         setPlayText("▶ Play");
+
+        if (Date.now() < pauseByCodeUntil) return;
+
+        if (shouldKeepPlaying && !video.ended) {
+          setTimeout(() => {
+            if (shouldKeepPlaying && video.paused && !video.ended) {
+              requestPlay();
+            }
+          }, 180);
+        }
+      });
+
+      video.addEventListener("ended", () => {
+        shouldKeepPlaying = false;
+        pendingPlayOnReady = false;
+        stopPlaybackWatchdog();
       });
 
       // Recovery: si el video se traba, intentar reanudar automáticamente
       video.addEventListener("stalled", () => {
-        toast("⚠ Video trabado, intentando reanudar...", "");
         recoverVideoFromStall("stalled");
       });
 
@@ -1335,9 +1369,12 @@
       // ─── PLAYBACK ───────────────────────────────────────────────────
       function togglePlay() {
         if (video.paused) {
+          shouldKeepPlaying = true;
           requestPlay();
         } else {
+          shouldKeepPlaying = false;
           pendingPlayOnReady = false;
+          pauseByCodeUntil = Date.now() + 350;
           video.pause();
         }
       }
@@ -1345,14 +1382,17 @@
       function requestPlay() {
         if (!video.src) return;
         pendingPlayOnReady = true;
+        shouldKeepPlaying = true;
         video
           .play()
           .then(() => {
             pendingPlayOnReady = false;
+            startPlaybackWatchdog();
           })
           .catch((error) => {
             if (error && error.name === "NotAllowedError") {
               pendingPlayOnReady = false;
+              shouldKeepPlaying = false;
               toast("No se pudo reproducir: toca Play otra vez", "error");
               return;
             }
@@ -1374,6 +1414,7 @@
       }
 
       function stepFrames(n) {
+        pauseByCodeUntil = Date.now() + 500;
         video.pause();
         const next = Math.max(
           0,
@@ -1429,6 +1470,7 @@
         clearTimeout(seekRecoveryTimer);
         seekPending = false;
         try {
+          pauseByCodeUntil = Date.now() + 700;
           video.pause();
           video.currentTime = t;
           video.currentTime = t;
@@ -1436,11 +1478,36 @@
           if (pendingPlayOnReady) {
             requestPlay();
           }
-          toast("⚠ Recuperando video trabado (" + reason + ")", "");
         } finally {
           setTimeout(() => {
             isRecoveringVideo = false;
           }, 500);
+        }
+      }
+
+      function startPlaybackWatchdog() {
+        if (playbackWatchdogTimer) return;
+        playbackWatchdogTimer = setInterval(() => {
+          if (!video.src) return;
+
+          if (shouldKeepPlaying && video.paused && !video.ended) {
+            requestPlay();
+            return;
+          }
+
+          if (shouldKeepPlaying && !video.paused && !video.ended) {
+            const idleMs = Date.now() - (lastProgressAt || 0);
+            if (idleMs > 2200) {
+              recoverVideoFromStall("watchdog no progress");
+            }
+          }
+        }, 1200);
+      }
+
+      function stopPlaybackWatchdog() {
+        if (playbackWatchdogTimer) {
+          clearInterval(playbackWatchdogTimer);
+          playbackWatchdogTimer = null;
         }
       }
 
@@ -1876,6 +1943,9 @@
 
       // ─── RESET ──────────────────────────────────────────────────────
       function resetPlayer() {
+        shouldKeepPlaying = false;
+        stopPlaybackWatchdog();
+        pauseByCodeUntil = Date.now() + 350;
         video.pause();
         video.src = "";
         video.load();
@@ -1891,6 +1961,8 @@
         isScrubbing = false;
         lastSavedSecond = -1;
         lastUiUpdateAt = 0;
+        lastProgressTime = 0;
+        lastProgressAt = 0;
         lastUIState = {
           currentTime: "",
           frameNum: "",
