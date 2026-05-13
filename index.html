@@ -914,24 +914,28 @@
       let isRecoveringVideo = false;
       const MAX_HISTORY_ITEMS = 50;
       const HISTORY_PREVIEW_WIDTH = 320;
+      let saveHistoryTimer = null;
 
       // ─── STORAGE ────────────────────────────────────────────────────
       const STORAGE_KEY = "framelens_history";
       const STORAGE_TIME_KEY = "framelens_lastTime";
 
       function saveHistoryToStorage() {
-        try {
-          // Guardar metadatos + miniaturas webp comprimidas (pequeñas, ~5-20KB cada una)
-          // Las miniaturas son 320px y comprimidas al 82%, no congelan la página.
-          const toSave = frameHistory.map((entry) => ({
-            previewUrl: entry.previewUrl,
-            time: entry.time,
-            frame: entry.frame,
-          }));
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-        } catch (e) {
-          console.warn("No se pudo guardar historial:", e.message);
-        }
+        // Debounced write to avoid blocking main thread on many captures
+        if (saveHistoryTimer) clearTimeout(saveHistoryTimer);
+        saveHistoryTimer = setTimeout(() => {
+          try {
+            const toSave = frameHistory.map((entry) => ({
+              previewUrl: entry.previewUrl,
+              time: entry.time,
+              frame: entry.frame,
+            }));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+          } catch (e) {
+            console.warn("No se pudo guardar historial:", e.message);
+          }
+          saveHistoryTimer = null;
+        }, 300);
       }
 
       function loadHistoryFromStorage() {
