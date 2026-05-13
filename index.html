@@ -912,6 +912,7 @@
       let seekDebounceTimer = null;
       let seekRecoveryTimer = null;
       let isRecoveringVideo = false;
+      let pendingPlayOnReady = false;
       const MAX_HISTORY_ITEMS = 50;
       const HISTORY_PREVIEW_WIDTH = 320;
       let saveHistoryTimer = null;
@@ -1078,6 +1079,12 @@
       video.addEventListener("canplay", () => {
         clearTimeout(seekRecoveryTimer);
         setPlayText(video.paused ? "▶ Play" : "⏸ Pause");
+        if (pendingPlayOnReady) {
+          pendingPlayOnReady = false;
+          video.play().catch(() => {
+            pendingPlayOnReady = true;
+          });
+        }
       });
 
       video.addEventListener("seeked", () => {
@@ -1119,10 +1126,31 @@
 
       // ─── PLAYBACK ───────────────────────────────────────────────────
       function togglePlay() {
-        if (video.readyState < 2) return; // no hacer nada si no está listo
-        if (video.paused)
-          video.play().catch(() => toast("No se pudo reproducir", "error"));
-        else video.pause();
+        if (video.paused) {
+          requestPlay();
+        } else {
+          pendingPlayOnReady = false;
+          video.pause();
+        }
+      }
+
+      function requestPlay() {
+        if (!video.src) return;
+        pendingPlayOnReady = true;
+        video
+          .play()
+          .then(() => {
+            pendingPlayOnReady = false;
+          })
+          .catch((error) => {
+            if (error && error.name === "NotAllowedError") {
+              pendingPlayOnReady = false;
+              toast("No se pudo reproducir: toca Play otra vez", "error");
+              return;
+            }
+            // Si todavía está cargando o se trabó, dejamos la reproducción pendiente
+            pendingPlayOnReady = true;
+          });
       }
 
       function setPlayText(txt) {
@@ -1192,7 +1220,10 @@
           video.currentTime = t;
           video.load();
           video.currentTime = t;
-          if (wasPlaying) video.play().catch(() => {});
+          pendingPlayOnReady = wasPlaying || pendingPlayOnReady;
+          if (pendingPlayOnReady) {
+            requestPlay();
+          }
           toast("⚠ Recuperando video trabado (" + reason + ")", "");
         } finally {
           setTimeout(() => {
@@ -1627,6 +1658,7 @@
         capturedBlob = null;
         seekPending = false;
         isScrubbing = false;
+        pendingPlayOnReady = false;
         lensBtn.disabled = true;
         frameCanvas.style.display = "none";
         document.getElementById("frameImg").style.display = "none";
