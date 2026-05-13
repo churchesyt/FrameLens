@@ -588,6 +588,25 @@
         opacity: 1;
       }
 
+      body.mobile-safe .btn,
+      body.mobile-safe .history-item,
+      body.mobile-safe #toast,
+      body.mobile-safe #lensLink {
+        transition: none !important;
+      }
+
+      body.mobile-safe .history-item:hover {
+        transform: none;
+      }
+
+      body.mobile-safe #playerSection,
+      body.mobile-safe .controls,
+      body.mobile-safe .video-wrap,
+      body.mobile-safe .capture-panel,
+      body.mobile-safe #historySection {
+        contain: layout paint;
+      }
+
       /* RESPONSIVE */
       @media (max-width: 768px) {
         body {
@@ -789,7 +808,12 @@
     <div id="playerSection">
       <div class="media-row">
         <div class="video-wrap">
-          <video id="video" preload="metadata"></video>
+          <video
+            id="video"
+            preload="metadata"
+            playsinline
+            webkit-playsinline
+          ></video>
         </div>
 
         <!-- MINI CONTROLS (compact, debajo del video) -->
@@ -1103,9 +1127,25 @@
       let isRecoveringVideo = false;
       let pendingPlayOnReady = false;
       let lastRecoveryAt = 0;
+      const isLikelyMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(
+        navigator.userAgent,
+      );
+      const MOBILE_UI_UPDATE_MS = 120;
+      let lastUiUpdateAt = 0;
+      let lastSavedSecond = -1;
+      let lastUIState = {
+        currentTime: "",
+        frameNum: "",
+        exactTime: "",
+        scrubberBg: "",
+      };
       const MAX_HISTORY_ITEMS = 50;
       const HISTORY_PREVIEW_WIDTH = 320;
       let saveHistoryTimer = null;
+
+      if (isLikelyMobile) {
+        document.body.classList.add("mobile-safe");
+      }
 
       // ─── STORAGE ────────────────────────────────────────────────────
       const STORAGE_KEY = "framelens_history";
@@ -1207,6 +1247,9 @@
           URL.revokeObjectURL(currentVideoURL);
           currentVideoURL = null;
         }
+        lastSavedSecond = -1;
+        lastUiUpdateAt = 0;
+        lastUIState.scrubberBg = "";
         currentVideoURL = URL.createObjectURL(file);
         video.src = currentVideoURL;
         video.load();
@@ -1227,9 +1270,15 @@
       video.addEventListener("timeupdate", () => {
         if (!isScrubbing) {
           scrubber.value = Math.floor(video.currentTime * 1000);
-          updateInfo();
-          // Guardar tiempo cada segundo aproximadamente
-          if (Math.floor(video.currentTime) % 1 === 0) {
+          const now = performance.now();
+          if (!isLikelyMobile || now - lastUiUpdateAt >= MOBILE_UI_UPDATE_MS) {
+            updateInfo();
+            lastUiUpdateAt = now;
+          }
+          // Guardar solo una vez por segundo
+          const sec = Math.floor(video.currentTime);
+          if (sec !== lastSavedSecond) {
+            lastSavedSecond = sec;
             saveLastTime(video.currentTime);
           }
         }
@@ -1246,13 +1295,7 @@
       // Recovery: si el video se traba, intentar reanudar automáticamente
       video.addEventListener("stalled", () => {
         toast("⚠ Video trabado, intentando reanudar...", "");
-        setTimeout(() => {
-          if (video.paused) return;
-          const t = video.currentTime;
-          video.load();
-          video.currentTime = t;
-          video.play().catch(() => {});
-        }, 1500);
+        recoverVideoFromStall("stalled");
       });
 
       video.addEventListener("waiting", () => {
@@ -1435,12 +1478,31 @@
 
       function updateInfo() {
         const t = video.currentTime;
-        document.getElementById("currentTime").textContent = formatTimeMs(t);
-        document.getElementById("frameNum").textContent = Math.round(t * fps);
-        document.getElementById("exactTime").textContent = t.toFixed(4) + "s";
+        const currentTimeText = formatTimeMs(t);
+        const frameNumText = String(Math.round(t * fps));
+        const exactTimeText = t.toFixed(4) + "s";
+
+        if (lastUIState.currentTime !== currentTimeText) {
+          document.getElementById("currentTime").textContent = currentTimeText;
+          lastUIState.currentTime = currentTimeText;
+        }
+        if (lastUIState.frameNum !== frameNumText) {
+          document.getElementById("frameNum").textContent = frameNumText;
+          lastUIState.frameNum = frameNumText;
+        }
+        if (lastUIState.exactTime !== exactTimeText) {
+          document.getElementById("exactTime").textContent = exactTimeText;
+          lastUIState.exactTime = exactTimeText;
+        }
         // update scrubber fill visual
-        const pct = (scrubber.value / scrubber.max) * 100;
-        scrubber.style.background = `linear-gradient(to right, var(--accent) ${pct}%, var(--border) ${pct}%)`;
+        const pct = scrubber.max ? (scrubber.value / scrubber.max) * 100 : 0;
+        const bg = `linear-gradient(to right, var(--accent) ${pct}%, var(--border) ${pct}%)`;
+        if (!isLikelyMobile || video.paused || isScrubbing) {
+          if (lastUIState.scrubberBg !== bg) {
+            scrubber.style.background = bg;
+            lastUIState.scrubberBg = bg;
+          }
+        }
       }
 
       // ─── CAPTURE ────────────────────────────────────────────────────
@@ -1852,6 +1914,14 @@
         capturedBlob = null;
         seekPending = false;
         isScrubbing = false;
+        lastSavedSecond = -1;
+        lastUiUpdateAt = 0;
+        lastUIState = {
+          currentTime: "",
+          frameNum: "",
+          exactTime: "",
+          scrubberBg: "",
+        };
         pendingPlayOnReady = false;
         lensBtn.disabled = true;
         frameCanvas.style.display = "none";
