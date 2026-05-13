@@ -1438,17 +1438,18 @@
           return;
         }
 
-        // Si el blob existe, usar directamente
+        // Prioridad para compartir:
+        // 1) blob en memoria
+        // 2) previewUrl guardada en storage (miniatura)
+        // 3) capturar desde el video si está cargado
+
         if (entry.blob) {
           const file = new File([entry.blob], "frame_" + entry.frame + ".png", {
             type: "image/png",
           });
           if (navigator.share) {
             navigator
-              .share({
-                files: [file],
-                title: "Frame " + entry.frame,
-              })
+              .share({ files: [file], title: "Frame " + entry.frame })
               .catch(() => {});
             toast("🔍 Compartiendo frame " + entry.frame, "success");
           } else {
@@ -1457,40 +1458,85 @@
           return;
         }
 
-        // Si blob no existe (restaurado), capturar del video
-        if (!video.src) {
-          toast("Carga el video para buscar frames del historial", "error");
+        if (entry.previewUrl) {
+          // Usar la miniatura guardada para compartir (no requiere el video)
+          fetch(entry.previewUrl)
+            .then((res) => res.blob())
+            .then((blob) => {
+              const file = new File([blob], "frame_" + entry.frame + ".png", {
+                type: blob.type || "image/png",
+              });
+              if (navigator.share) {
+                navigator
+                  .share({ files: [file], title: "Frame " + entry.frame })
+                  .catch(() => {});
+                toast("🔍 Compartiendo miniatura " + entry.frame, "success");
+              } else {
+                toast("Share no disponible en este navegador", "error");
+              }
+            })
+            .catch((e) => {
+              toast("Error al preparar miniatura: " + e.message, "error");
+            });
           return;
         }
 
-        toast("⏳ Buscando frame " + entry.frame + "...", "");
-        captureFrameAtTime(entry.time)
-          .then((blob) => {
-            const file = new File([blob], "frame_" + entry.frame + ".png", {
-              type: "image/png",
+        // Si no hay preview ni blob, intentar capturar desde el video si está cargado
+        if (video.src) {
+          toast("⏳ Buscando frame " + entry.frame + "...", "");
+          captureFrameAtTime(entry.time)
+            .then((blob) => {
+              const file = new File([blob], "frame_" + entry.frame + ".png", {
+                type: "image/png",
+              });
+              if (navigator.share) {
+                navigator
+                  .share({ files: [file], title: "Frame " + entry.frame })
+                  .catch(() => {});
+                toast("🔍 Compartiendo frame " + entry.frame, "success");
+              } else {
+                toast("Share no disponible en este navegador", "error");
+              }
+            })
+            .catch((e) => {
+              toast("Error: " + e, "error");
             });
-            if (navigator.share) {
-              navigator
-                .share({
-                  files: [file],
-                  title: "Frame " + entry.frame,
-                })
-                .catch(() => {});
-              toast("🔍 Compartiendo frame " + entry.frame, "success");
-            } else {
-              toast("Share no disponible en este navegador", "error");
-            }
-          })
-          .catch((e) => {
-            toast("Error: " + e, "error");
-          });
+          return;
+        }
+
+        toast(
+          "Carga el video o conserva la miniatura para buscar este frame",
+          "error",
+        );
       }
 
       function loadHistoryItem(i) {
         const entry = frameHistory[i];
-        setMainFrameFromBlob(entry.blob);
-        capturedBlob = entry.blob;
-        lensBtn.disabled = false;
+        // Mostrar miniatura si existe, o la blob si está en memoria
+        if (currentFrameURL) {
+          URL.revokeObjectURL(currentFrameURL);
+          currentFrameURL = null;
+        }
+        const frameImg = document.getElementById("frameImg");
+        if (entry.blob) {
+          setMainFrameFromBlob(entry.blob);
+          capturedBlob = entry.blob;
+          lensBtn.disabled = false;
+        } else if (entry.previewUrl) {
+          frameImg.src = entry.previewUrl;
+          frameImg.style.display = "block";
+          document.getElementById("canvasPlaceholder").style.display = "none";
+          document.getElementById("longPressHint").style.display = "block";
+          capturedBlob = null;
+          lensBtn.disabled = false; // permite compartir la miniatura
+        } else {
+          // No hay datos visuales
+          frameImg.style.display = "none";
+          document.getElementById("canvasPlaceholder").style.display = "block";
+          document.getElementById("longPressHint").style.display = "none";
+          capturedBlob = null;
+          lensBtn.disabled = true;
+        }
         // Marcar activo
         document.querySelectorAll(".history-item").forEach((el, idx) => {
           el.classList.toggle("active", idx === i);
