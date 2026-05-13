@@ -913,6 +913,7 @@
       let seekRecoveryTimer = null;
       let isRecoveringVideo = false;
       let pendingPlayOnReady = false;
+      let lastRecoveryAt = 0;
       const MAX_HISTORY_ITEMS = 50;
       const HISTORY_PREVIEW_WIDTH = 320;
       let saveHistoryTimer = null;
@@ -1207,6 +1208,11 @@
 
       function recoverVideoFromStall(reason) {
         if (isRecoveringVideo || !video.src) return;
+        const now = Date.now();
+        if (now - lastRecoveryAt < 2000) {
+          return;
+        }
+        lastRecoveryAt = now;
         isRecoveringVideo = true;
         const wasPlaying = !video.paused;
         const t = Math.max(
@@ -1218,7 +1224,6 @@
         try {
           video.pause();
           video.currentTime = t;
-          video.load();
           video.currentTime = t;
           pendingPlayOnReady = wasPlaying || pendingPlayOnReady;
           if (pendingPlayOnReady) {
