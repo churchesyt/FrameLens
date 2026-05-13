@@ -816,6 +816,67 @@
           ></video>
         </div>
 
+        <div class="capture-panel">
+          <!-- Thumbnail: IMG real para que long-press abra menú nativo de Lens -->
+          <div>
+            <div class="panel-label">Frame capturado</div>
+            <div class="canvas-wrap">
+              <div class="canvas-placeholder" id="canvasPlaceholder">
+                Captura<br />un frame
+              </div>
+              <canvas id="frameCanvas" style="display: none"></canvas>
+              <img
+                id="frameImg"
+                style="
+                  display: none;
+                  width: 100%;
+                  height: 100%;
+                  object-fit: contain;
+                  border-radius: 8px;
+                "
+                alt="frame capturado"
+                draggable="true"
+              />
+            </div>
+            <div
+              id="longPressHint"
+              style="
+                display: none;
+                font-size: 0.58rem;
+                color: var(--muted);
+                text-align: center;
+                margin-top: 4px;
+              "
+            >
+              mantén presionada ☝️ para Lens
+            </div>
+          </div>
+          <!-- Actions -->
+          <div class="capture-actions">
+            <button
+              class="btn primary"
+              onclick="captureFrame()"
+              style="justify-content: center"
+            >
+              📷 Capturar Frame
+            </button>
+            <button
+              class="btn lens"
+              id="lensBtn"
+              onclick="openLens()"
+              disabled
+              style="justify-content: center"
+            >
+              🔍 Abrir Lens
+            </button>
+            <div class="lens-note">
+              <strong>Long press</strong> sobre la imagen → "Buscar con Google
+              Lens" · o ábrela directo desde el navegador.
+              <strong>[C]</strong> captura
+            </div>
+          </div>
+        </div>
+
         <div class="controls">
           <!-- SCRUBBER -->
           <div class="scrubber-row">
@@ -921,67 +982,6 @@
               <span><span class="kbd">C</span> capturar</span>
               <span><span class="kbd">L</span> Lens</span>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="capture-panel">
-        <!-- Thumbnail: IMG real para que long-press abra menú nativo de Lens -->
-        <div>
-          <div class="panel-label">Frame capturado</div>
-          <div class="canvas-wrap">
-            <div class="canvas-placeholder" id="canvasPlaceholder">
-              Captura<br />un frame
-            </div>
-            <canvas id="frameCanvas" style="display: none"></canvas>
-            <img
-              id="frameImg"
-              style="
-                display: none;
-                width: 100%;
-                height: 100%;
-                object-fit: contain;
-                border-radius: 8px;
-              "
-              alt="frame capturado"
-              draggable="true"
-            />
-          </div>
-          <div
-            id="longPressHint"
-            style="
-              display: none;
-              font-size: 0.58rem;
-              color: var(--muted);
-              text-align: center;
-              margin-top: 4px;
-            "
-          >
-            mantén presionada ☝️ para Lens
-          </div>
-        </div>
-        <!-- Actions -->
-        <div class="capture-actions">
-          <button
-            class="btn primary"
-            onclick="captureFrame()"
-            style="justify-content: center"
-          >
-            📷 Capturar Frame
-          </button>
-          <button
-            class="btn lens"
-            id="lensBtn"
-            onclick="openLens()"
-            disabled
-            style="justify-content: center"
-          >
-            🔍 Abrir Lens
-          </button>
-          <div class="lens-note">
-            <strong>Long press</strong> sobre la imagen → "Buscar con Google
-            Lens" · o ábrela directo desde el navegador.
-            <strong>[C]</strong> captura
           </div>
         </div>
       </div>
