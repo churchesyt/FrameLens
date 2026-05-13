@@ -914,125 +914,17 @@
       let isRecoveringVideo = false;
       const MAX_HISTORY_ITEMS = 50;
       const HISTORY_PREVIEW_WIDTH = 320;
-      const TRANSPARENT_PIXEL =
-        "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
 
       // ─── STORAGE ────────────────────────────────────────────────────
       const STORAGE_KEY = "framelens_history";
       const STORAGE_TIME_KEY = "framelens_lastTime";
-      const HISTORY_DB_NAME = "framelens_history_db";
-      const HISTORY_DB_VERSION = 1;
-      const HISTORY_DB_STORE = "previews";
-      let historyDbPromise = null;
-
-      function openHistoryDb() {
-        if (!("indexedDB" in window)) return Promise.resolve(null);
-        if (!historyDbPromise) {
-          historyDbPromise = new Promise((resolve) => {
-            const request = indexedDB.open(HISTORY_DB_NAME, HISTORY_DB_VERSION);
-
-            request.onupgradeneeded = () => {
-              const db = request.result;
-              if (!db.objectStoreNames.contains(HISTORY_DB_STORE)) {
-                db.createObjectStore(HISTORY_DB_STORE);
-              }
-            };
-
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => {
-              console.warn("No se pudo abrir IndexedDB de historial");
-              resolve(null);
-            };
-          });
-        }
-        return historyDbPromise;
-      }
-
-      function runHistoryDb(opener) {
-        return openHistoryDb().then((db) => {
-          if (!db) return null;
-          return new Promise((resolve) => {
-            try {
-              const tx = db.transaction(HISTORY_DB_STORE, opener.mode);
-              const store = tx.objectStore(HISTORY_DB_STORE);
-              const result = opener(store);
-              tx.oncomplete = () => resolve(result);
-              tx.onerror = () => resolve(null);
-              tx.onabort = () => resolve(null);
-            } catch (e) {
-              resolve(null);
-            }
-          });
-        });
-      }
-
-      function savePreviewToCache(id, blob) {
-        if (!id || !blob) return Promise.resolve();
-        return runHistoryDb((store) => {
-          store.put(blob, id);
-          return true;
-        });
-      }
-
-      function loadPreviewFromCache(id) {
-        if (!id) return Promise.resolve(null);
-        return openHistoryDb().then((db) => {
-          if (!db) return null;
-          return new Promise((resolve) => {
-            try {
-              const tx = db.transaction(HISTORY_DB_STORE, "readonly");
-              const store = tx.objectStore(HISTORY_DB_STORE);
-              const request = store.get(id);
-              request.onsuccess = () => resolve(request.result || null);
-              request.onerror = () => resolve(null);
-            } catch (e) {
-              resolve(null);
-            }
-          });
-        });
-      }
-
-      function deletePreviewFromCache(id) {
-        if (!id) return Promise.resolve();
-        return runHistoryDb((store) => {
-          store.delete(id);
-          return true;
-        });
-      }
-
-      function clearPreviewCache() {
-        return runHistoryDb((store) => {
-          store.clear();
-          return true;
-        });
-      }
-
-      function makeHistoryId(time, frame) {
-        return (
-          "h_" +
-          Math.round(time * 1000) +
-          "_" +
-          frame +
-          "_" +
-          Date.now().toString(36) +
-          Math.random().toString(36).slice(2, 8)
-        );
-      }
-
-      function revokeHistoryEntryResources(entry) {
-        if (!entry) return;
-        if (entry.previewUrl && entry.previewUrl.startsWith("blob:")) {
-          URL.revokeObjectURL(entry.previewUrl);
-        }
-        if (entry.fullUrl && entry.fullUrl.startsWith("blob:")) {
-          URL.revokeObjectURL(entry.fullUrl);
-        }
-      }
 
       function saveHistoryToStorage() {
         try {
+          // Guardar metadatos + miniaturas webp comprimidas (pequeñas, ~5-20KB cada una)
+          // Las miniaturas son 320px y comprimidas al 82%, no congelan la página.
           const toSave = frameHistory.map((entry) => ({
-            id: entry.id,
+            previewUrl: entry.previewUrl,
             time: entry.time,
             frame: entry.frame,
           }));
@@ -1048,18 +940,17 @@
           if (saved) {
             const parsed = JSON.parse(saved);
             if (Array.isArray(parsed)) {
+              // Restaurar historial completo con miniaturas en caché.
+              // Las miniaturas webp son pequeñas (~5-20KB), no congelan la página.
               frameHistory = parsed.map((item) => ({
-                id: item.id || makeHistoryId(item.time || 0, item.frame || 0),
-                previewUrl: null,
+                previewUrl: item.previewUrl,
                 time: item.time,
                 frame: item.frame,
                 blob: null,
-                previewBlob: null,
               }));
               renderHistory();
-              hydrateHistoryPreviews();
               toast(
-                "✅ Historial restaurado (" + frameHistory.length + ")",
+                "✅ Historial restaurado (" + frameHistory.length + " frames)",
                 "",
               );
               return true;
@@ -1069,24 +960,6 @@
           console.warn("Error al cargar historial:", e.message);
         }
         return false;
-      }
-
-      async function hydrateHistoryPreviews() {
-        if (!frameHistory.length) return;
-        let changed = false;
-        for (const entry of frameHistory) {
-          if (entry.previewBlob) continue;
-          const blob = await loadPreviewFromCache(entry.id);
-          if (blob) {
-            entry.previewBlob = blob;
-            if (entry.previewUrl && entry.previewUrl.startsWith("blob:")) {
-              URL.revokeObjectURL(entry.previewUrl);
-            }
-            entry.previewUrl = URL.createObjectURL(blob);
-            changed = true;
-          }
-        }
-        if (changed) renderHistory();
       }
 
       function saveLastTime(t) {
@@ -1376,59 +1249,35 @@
         previewCanvas.height = targetH;
         const previewCtx = previewCanvas.getContext("2d");
         previewCtx.drawImage(frameCanvas, 0, 0, targetW, targetH);
+        const previewUrl = previewCanvas.toDataURL("image/webp", 0.82);
 
-        const id = makeHistoryId(t, frameNum);
+        frameCanvas.toBlob(
+          (blob) => {
+            capturedBlob = blob;
+            lensBtn.disabled = false;
 
-        previewCanvas.toBlob(
-          (previewBlob) => {
-            if (!previewBlob) {
-              toast("No se pudo crear la miniatura del frame", "error");
-              return;
+            setMainFrameFromBlob(blob);
+
+            // Agregar al historial
+            const entry = { previewUrl, time: t, frame: frameNum, blob };
+            frameHistory.unshift(entry);
+            if (frameHistory.length > MAX_HISTORY_ITEMS) {
+              frameHistory = frameHistory.slice(0, MAX_HISTORY_ITEMS);
+              toast(
+                "Historial limitado a " + MAX_HISTORY_ITEMS + " frames",
+                "",
+              );
             }
-
-            const previewUrl = URL.createObjectURL(previewBlob);
-
-            frameCanvas.toBlob(
-              (blob) => {
-                capturedBlob = blob;
-                lensBtn.disabled = false;
-
-                setMainFrameFromBlob(blob);
-
-                // Agregar al historial
-                const entry = {
-                  id,
-                  previewUrl,
-                  previewBlob,
-                  time: t,
-                  frame: frameNum,
-                  blob,
-                };
-                frameHistory.unshift(entry);
-                if (frameHistory.length > MAX_HISTORY_ITEMS) {
-                  const removed = frameHistory.slice(MAX_HISTORY_ITEMS);
-                  removed.forEach(revokeHistoryEntryResources);
-                  frameHistory = frameHistory.slice(0, MAX_HISTORY_ITEMS);
-                  toast(
-                    "Historial limitado a " + MAX_HISTORY_ITEMS + " frames",
-                    "",
-                  );
-                }
-                renderHistory();
-                saveHistoryToStorage();
-                savePreviewToCache(id, previewBlob);
-              },
-              "image/png",
-              1,
-            );
-
-            toast(
-              "✅ Frame " + frameNum + " capturado — long press para Lens",
-              "success",
-            );
+            renderHistory();
+            saveHistoryToStorage();
           },
-          "image/webp",
-          0.82,
+          "image/png",
+          1,
+        );
+
+        toast(
+          "✅ Frame " + frameNum + " capturado — long press para Lens",
+          "success",
         );
       }
 
@@ -1469,10 +1318,9 @@
           if (selectionMode)
             checkboxHtml = `<input type="checkbox" class="h-check" data-idx="${idx}" onchange="toggleItemSelection(${idx}, this.checked)" ${selectedItems.has(idx) ? "checked" : ""} />`;
 
-          const imgSrc = entry.previewUrl || TRANSPARENT_PIXEL;
           item.innerHTML = `
         ${checkboxHtml}
-        <img src="${imgSrc}" alt="frame ${entry.frame}" draggable="true">
+        <img src="${entry.previewUrl}" alt="frame ${entry.frame}" draggable="true">
         <div class="h-meta">f${entry.frame} · ${entry.time.toFixed(2)}s</div>
         <div style="display:flex;gap:6px;align-items:center">
           <button class="btn" style="font-size:0.7rem;padding:4px 8px;" onmouseover="this.dataset.idx = '${idx}';" onclick="openLensForEntry(parseInt(this.dataset.idx))">Buscar</button>
@@ -1516,9 +1364,7 @@
         // eliminar por índice en orden descendente
         const ids = Array.from(selectedItems).sort((a, b) => b - a);
         ids.forEach((i) => {
-          const [removed] = frameHistory.splice(i, 1);
-          revokeHistoryEntryResources(removed);
-          deletePreviewFromCache(removed && removed.id);
+          frameHistory.splice(i, 1);
         });
         selectedItems.clear();
         selectionMode = false;
@@ -1593,9 +1439,8 @@
         }
 
         // Si el blob existe, usar directamente
-        if (entry.blob || entry.previewBlob) {
-          const sourceBlob = entry.blob || entry.previewBlob;
-          const file = new File([sourceBlob], "frame_" + entry.frame + ".png", {
+        if (entry.blob) {
+          const file = new File([entry.blob], "frame_" + entry.frame + ".png", {
             type: "image/png",
           });
           if (navigator.share) {
@@ -1612,87 +1457,39 @@
           return;
         }
 
-        // Si no hay blob en memoria, intentar recuperarlo de la caché.
-        if (entry.id) {
-          toast("⏳ Recuperando frame " + entry.frame + "...", "");
-          loadPreviewFromCache(entry.id)
-            .then((blob) => {
-              if (blob) {
-                entry.previewBlob = blob;
-                if (!entry.previewUrl) {
-                  entry.previewUrl = URL.createObjectURL(blob);
-                  renderHistory();
-                }
-                const file = new File([blob], "frame_" + entry.frame + ".png", {
-                  type: "image/png",
-                });
-                if (navigator.share) {
-                  navigator
-                    .share({
-                      files: [file],
-                      title: "Frame " + entry.frame,
-                    })
-                    .catch(() => {});
-                  toast("🔍 Compartiendo frame " + entry.frame, "success");
-                  return;
-                }
-                toast("Share no disponible en este navegador", "error");
-                return;
-              }
-
-              // Si no está en caché, usar el video solo si existe.
-              if (!video.src) {
-                toast(
-                  "Carga el video para buscar frames del historial",
-                  "error",
-                );
-                return;
-              }
-
-              toast("⏳ Buscando frame " + entry.frame + "...", "");
-              captureFrameAtTime(entry.time)
-                .then((freshBlob) => {
-                  const file = new File(
-                    [freshBlob],
-                    "frame_" + entry.frame + ".png",
-                    {
-                      type: "image/png",
-                    },
-                  );
-                  if (navigator.share) {
-                    navigator
-                      .share({
-                        files: [file],
-                        title: "Frame " + entry.frame,
-                      })
-                      .catch(() => {});
-                    toast("🔍 Compartiendo frame " + entry.frame, "success");
-                  } else {
-                    toast("Share no disponible en este navegador", "error");
-                  }
-                })
-                .catch((e) => {
-                  toast("Error: " + e, "error");
-                });
-            })
-            .catch((e) => {
-              toast("Error: " + e, "error");
-            });
+        // Si blob no existe (restaurado), capturar del video
+        if (!video.src) {
+          toast("Carga el video para buscar frames del historial", "error");
           return;
         }
 
-        toast("No hay datos para este frame", "error");
+        toast("⏳ Buscando frame " + entry.frame + "...", "");
+        captureFrameAtTime(entry.time)
+          .then((blob) => {
+            const file = new File([blob], "frame_" + entry.frame + ".png", {
+              type: "image/png",
+            });
+            if (navigator.share) {
+              navigator
+                .share({
+                  files: [file],
+                  title: "Frame " + entry.frame,
+                })
+                .catch(() => {});
+              toast("🔍 Compartiendo frame " + entry.frame, "success");
+            } else {
+              toast("Share no disponible en este navegador", "error");
+            }
+          })
+          .catch((e) => {
+            toast("Error: " + e, "error");
+          });
       }
 
       function loadHistoryItem(i) {
         const entry = frameHistory[i];
-        const sourceBlob = entry.blob || entry.previewBlob;
-        if (!sourceBlob) {
-          toast("Ese frame todavía no terminó de cargarse", "error");
-          return;
-        }
-        setMainFrameFromBlob(sourceBlob);
-        capturedBlob = sourceBlob;
+        setMainFrameFromBlob(entry.blob);
+        capturedBlob = entry.blob;
         lensBtn.disabled = false;
         // Marcar activo
         document.querySelectorAll(".history-item").forEach((el, idx) => {
@@ -1703,9 +1500,7 @@
 
       function deleteHistoryItem(i, e) {
         e.stopPropagation();
-        const [removed] = frameHistory.splice(i, 1);
-        revokeHistoryEntryResources(removed);
-        deletePreviewFromCache(removed && removed.id);
+        frameHistory.splice(i, 1);
         renderHistory();
         saveHistoryToStorage();
       }
@@ -1728,8 +1523,6 @@
       }
 
       function clearHistory() {
-        frameHistory.forEach(revokeHistoryEntryResources);
-        clearPreviewCache();
         frameHistory = [];
         renderHistory();
         saveHistoryToStorage();
@@ -1796,7 +1589,6 @@
           URL.revokeObjectURL(currentFrameURL);
           currentFrameURL = null;
         }
-        frameHistory.forEach(revokeHistoryEntryResources);
         frameHistory = [];
         renderHistory();
         playerSection.classList.remove("visible");
